@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 high_score.json
 *.tmp
+build/
+dist/
+*.spec
