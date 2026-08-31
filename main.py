@@ -65,7 +65,7 @@ def save_high_score(score):
 def rtl(text):
     words = text.split(" ")
     return " ".join(
-        w[::-1] if all(ord(c) > 1424 for c in w if c.isalpha()) else w
+        w[::-1] if any(1424 < ord(c) < 1536 for c in w) else w
         for w in reversed(words)
     )
 
