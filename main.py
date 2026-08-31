@@ -3,8 +3,16 @@ import random
 import os
 import sys
 import json
+import urllib.request
+import urllib.error
+import subprocess
 
 pygame.init()
+
+# --- מספר הגרסה הנוכחי (חייב להתאים לתגית ה-Release בגיטהאב, למשל v1.0.0) ---
+VERSION = "1.0.0"
+GITHUB_REPO = "YSmauas/Snake-for-Windows"
+LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 # --- הגדרות צבעים (סגנון רטרו נוקיה) ---
 BG_COLOR = (135, 170, 101)
@@ -57,6 +65,93 @@ def save_high_score(score):
             json.dump({"high_score": score}, file)
     except OSError:
         pass  # אין הרשאת כתיבה - לא קריטי, פשוט לא נשמור הפעם
+
+
+def _parse_version(v):
+    """'v1.2.3' / '1.2.3' -> (1, 2, 3), כדי להשוות גרסאות כמספרים ולא כמחרוזות."""
+    v = v.lstrip("vV")
+    parts = []
+    for p in v.split("."):
+        try:
+            parts.append(int(p))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+def check_for_update():
+    """
+    בודק מול ה-Release האחרון בגיטהאב אם יש גרסה חדשה מהגרסה הנוכחית.
+    מחזיר את פרטי ה-Release (dict) אם יש עדכון, אחרת None.
+    לעולם לא מפיל את המשחק - אין אינטרנט / גיטהאב לא זמין = פשוט לא מוצע עדכון.
+    """
+    try:
+        req = urllib.request.Request(
+            LATEST_RELEASE_API,
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "Snake-for-Windows"},
+        )
+        with urllib.request.urlopen(req, timeout=4) as response:
+            data = json.load(response)
+        remote_tag = data.get("tag_name", "")
+        if _parse_version(remote_tag) > _parse_version(VERSION):
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def _find_exe_asset_url(release_data):
+    for asset in release_data.get("assets", []):
+        if asset.get("name", "").lower().endswith(".exe"):
+            return asset.get("browser_download_url")
+    return None
+
+
+def apply_update(release_data):
+    """
+    מוריד את ה-exe מה-Release האחרון ומחליף את קובץ ה-exe הרץ כרגע.
+    עובד רק בגרסת exe מקומפלת (לא כשמריצים python main.py).
+    בהצלחה - סוגר את המשחק כדי לאפשר להחלפה לקרות, ופותח מחדש אוטומטית.
+    """
+    if not getattr(sys, "frozen", False):
+        return False, "עדכון אוטומטי זמין רק בגרסת ה-exe. הריצו python update.py לעדכון קוד המקור."
+
+    exe_url = _find_exe_asset_url(release_data)
+    if not exe_url:
+        return False, "לא נמצא קובץ exe בגרסה החדשה."
+
+    current_exe = sys.executable
+    new_exe_path = os.path.join(APP_DIR, "Snake_update.exe")
+
+    try:
+        urllib.request.urlretrieve(exe_url, new_exe_path)
+    except Exception:
+        return False, "הורדת העדכון נכשלה. בדקו חיבור לאינטרנט ונסו שוב."
+
+    pid = os.getpid()
+    bat_path = os.path.join(APP_DIR, "_apply_update.bat")
+    bat_content = (
+        "@echo off\r\n"
+        ":waitloop\r\n"
+        f'tasklist /FI "PID eq {pid}" ^| find "{pid}" >nul\r\n'
+        "if not errorlevel 1 (\r\n"
+        "    timeout /t 1 /nobreak >nul\r\n"
+        "    goto waitloop\r\n"
+        ")\r\n"
+        f'move /y "{new_exe_path}" "{current_exe}" >nul\r\n'
+        f'start "" "{current_exe}"\r\n'
+        'del "%~f0"\r\n'
+    )
+    with open(bat_path, "w", encoding="utf-8") as f:
+        f.write(bat_content)
+
+    subprocess.Popen(
+        ["cmd", "/c", bat_path],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        cwd=APP_DIR,
+    )
+    pygame.quit()
+    sys.exit(0)
 
 
 # הפיכת טקסט עברי בלי לשבור מספרים/אנגלית בתוך אותה שורה:
@@ -231,14 +326,21 @@ def gameLoop(base_speed):
 def main_menu():
     speed = 10
     menu = True
+    update_info = check_for_update()  # נבדק פעם אחת בכניסה לתפריט, לא בכל פריים
+    update_message = ""
+
     while menu:
         screen.fill(BG_COLOR)
         draw_text("Snake for Windows", TEXT_COLOR, -120, font_style)
-        draw_text("נוקיה 225 - מהדורה רטרו", TEXT_COLOR, -90, score_font)
+        draw_text(f"נוקיה 225 - מהדורה רטרו (v{VERSION})", TEXT_COLOR, -90, score_font)
         draw_text("1. התחל משחק", TEXT_COLOR, -30)
         draw_text("2. מהירות (כרגע: " + ("קל" if speed == 7 else "רגיל" if speed == 10 else "קשה") + ")", TEXT_COLOR, 10)
         draw_text("3. יציאה", TEXT_COLOR, 50)
         draw_text(f"שיא נוכחי: {get_high_score()}", TEXT_COLOR, 90, score_font)
+        if update_info:
+            draw_text(f"4. עדכון לגרסה {update_info.get('tag_name', '')} זמין!", (0, 90, 0), 130, small_font)
+        if update_message:
+            draw_text(update_message, APPLE_COLOR, 160, small_font)
         pygame.display.update()
 
         for event in pygame.event.get():
@@ -258,6 +360,11 @@ def main_menu():
                 elif event.key == pygame.K_3:
                     pygame.quit()
                     sys.exit()
+                elif event.key == pygame.K_4 and update_info:
+                    ok, msg = apply_update(update_info)
+                    if not ok:
+                        update_message = msg
+                        update_info = None
 
 
 if __name__ == "__main__":
