@@ -27,43 +27,14 @@ APPLE_HIGHLIGHT = (255, 150, 150)
 LEAF_COLOR = (40, 130, 40)
 STEM_COLOR = (90, 60, 30)
 TEXT_COLOR = (20, 20, 20)
+SPECIAL_APPLE_COLOR = (255, 215, 0)
 
 # --- הגדרות מסך ---
 WIDTH, HEIGHT = 600, 400
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Snake for Windows - נוקיה 225")
 
-try:
-    icon_surface = pygame.image.load(resource_path(os.path.join("assets", "icon.png")))
-    pygame.display.set_icon(icon_surface)
-except Exception:
-    pass  # אם האייקון לא נמצא, פשוט ממשיכים בלי אחד - לא קריטי
-
-try:
-    pygame.mixer.init()
-    CRUNCH_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "crunch.wav")))
-    GAMEOVER_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "gameover.wav")))
-    LEVELUP_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "levelup.wav")))
-    SOUND_ENABLED = True
-except Exception:
-    # אין כרטיס קול / קבצי הצליל חסרים - המשחק ימשיך לעבוד, פשוט בלי צלילים
-    CRUNCH_SOUND = GAMEOVER_SOUND = LEVELUP_SOUND = None
-    SOUND_ENABLED = False
-
-
-def play_sound(sound):
-    if SOUND_ENABLED and sound is not None:
-        try:
-            sound.play()
-        except Exception:
-            pass
-clock = pygame.time.Clock()
-
-BLOCK_SIZE = 20
-
-# נתיב בטוח גם כשהמשחק ארוז ל-exe (PyInstaller --onefile):
-# ב-exe, sys.executable מצביע על מיקום הקובץ המורץ עצמו.
-# בהרצת סקריפט רגיל, משתמשים ב-__file__.
+# נתיב בטוח גם כשהמשחק ארוז ל-exe (PyInstaller --onefile)
 if getattr(sys, "frozen", False):
     APP_DIR = os.path.dirname(sys.executable)
 else:
@@ -75,8 +46,7 @@ SCORE_FILE = os.path.join(APP_DIR, "high_score.json")
 def resource_path(relative_path):
     """
     נתיב לקבצי משאבים (תמונות/צלילים) שעובד גם כשמריצים python main.py
-    וגם בתוך exe מקומפל של PyInstaller (--add-data), שם הקבצים מחולצים
-    בזמן ריצה לתיקייה זמנית שכתובתה ב-sys._MEIPASS.
+    וגם בתוך exe מקומפל של PyInstaller (--add-data).
     """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         base_path = sys._MEIPASS
@@ -84,19 +54,38 @@ def resource_path(relative_path):
         base_path = APP_DIR
     return os.path.join(base_path, relative_path)
 
+
+try:
+    icon_surface = pygame.image.load(resource_path(os.path.join("assets", "icon.png")))
+    pygame.display.set_icon(icon_surface)
+except Exception:
+    pass
+
+try:
+    pygame.mixer.init()
+    CRUNCH_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "crunch.wav")))
+    GAMEOVER_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "gameover.wav")))
+    LEVELUP_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "levelup.wav")))
+    SPECIAL_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "special.wav")))
+    SOUND_ENABLED = True
+except Exception:
+    CRUNCH_SOUND = GAMEOVER_SOUND = LEVELUP_SOUND = SPECIAL_SOUND = None
+    SOUND_ENABLED = False
+
+
+def play_sound(sound):
+    if SOUND_ENABLED and sound is not None:
+        try:
+            sound.play()
+        except Exception:
+            pass
+
+
+clock = pygame.time.Clock()
+BLOCK_SIZE = 20
+
+
 def _load_hebrew_font(size, bold=False):
-    """
-    טוען גופן שתומך בעברית בצורה אמינה.
-
-    pygame.font.SysFont() מחפש גופן "לפי שם" - וזה מנגנון לא אמין בתוך exe
-    מקומפל, בעיקר במחשבים עם הגדרות שפה/אזור שאינן en-US: הוא נכשל בשקט
-    (בלי לזרוק שגיאה!) ונופל חזרה לגופן ברירת המחדל הפנימי של pygame, שלא
-    כולל תווי עברית בכלל - וזה בדיוק מה שגורם לריבועים ריקים (□) על המסך.
-
-    הפתרון: לטעון את קובץ הגופן ישירות לפי נתיב בדיסק (לא לפי שם), מה
-    שעוקף את מנגנון ה-matching הבעייתי. arial.ttf קיים כמעט בוודאות בכל
-    מחשב Windows.
-    """
     candidate_paths = [
         r"C:\Windows\Fonts\arial.ttf",
         r"C:\Windows\Fonts\tahoma.ttf",
@@ -113,7 +102,6 @@ def _load_hebrew_font(size, bold=False):
             except Exception:
                 continue
 
-    # לא נמצא קובץ גופן ישיר - ניסיון אחרון עם match_font (חיפוש לפי שם)
     fallback_path = pygame.font.match_font("arial,tahoma,segoeui,davidlibre", bold=bold)
     if fallback_path:
         try:
@@ -121,7 +109,6 @@ def _load_hebrew_font(size, bold=False):
         except Exception:
             pass
 
-    # מוצא אחרון - גופן ברירת המחדל של pygame (לא יתמוך בעברית, אך עדיף מקריסה)
     return pygame.font.Font(None, size)
 
 
@@ -136,7 +123,6 @@ def get_high_score():
             with open(SCORE_FILE, "r", encoding="utf-8") as file:
                 return json.load(file).get("high_score", 0)
         except (json.JSONDecodeError, OSError):
-            # קובץ פגום/לא קריא - מתחילים מ-0 במקום לקרוס
             return 0
     return 0
 
@@ -146,11 +132,10 @@ def save_high_score(score):
         with open(SCORE_FILE, "w", encoding="utf-8") as file:
             json.dump({"high_score": score}, file)
     except OSError:
-        pass  # אין הרשאת כתיבה - לא קריטי, פשוט לא נשמור הפעם
+        pass
 
 
 def _parse_version(v):
-    """'v1.2.3' / '1.2.3' -> (1, 2, 3), כדי להשוות גרסאות כמספרים ולא כמחרוזות."""
     v = v.lstrip("vV")
     parts = []
     for p in v.split("."):
@@ -162,11 +147,6 @@ def _parse_version(v):
 
 
 def check_for_update():
-    """
-    בודק מול ה-Release האחרון בגיטהאב אם יש גרסה חדשה מהגרסה הנוכחית.
-    מחזיר את פרטי ה-Release (dict) אם יש עדכון, אחרת None.
-    לעולם לא מפיל את המשחק - אין אינטרנט / גיטהאב לא זמין = פשוט לא מוצע עדכון.
-    """
     try:
         req = urllib.request.Request(
             LATEST_RELEASE_API,
@@ -190,11 +170,6 @@ def _find_exe_asset_url(release_data):
 
 
 def apply_update(release_data):
-    """
-    מוריד את ה-exe מה-Release האחרון ומחליף את קובץ ה-exe הרץ כרגע.
-    עובד רק בגרסת exe מקומפלת (לא כשמריצים python main.py).
-    בהצלחה - סוגר את המשחק כדי לאפשר להחלפה לקרות, ופותח מחדש אוטומטית.
-    """
     if not getattr(sys, "frozen", False):
         return False, "עדכון אוטומטי זמין רק בגרסת ה-exe. הריצו python update.py לעדכון קוד המקור."
 
@@ -236,22 +211,15 @@ def apply_update(release_data):
     sys.exit(0)
 
 
-# הפיכת טקסט עברי בלי לשבור מספרים/אנגלית בתוך אותה שורה:
-# הופכים את סדר ה"מילים", ואת התווים בתוך כל מילה עברית בלבד -
-# כך "שיא: 10" לא הופך ל-"01 :שיא".
 _BRACKET_MIRROR = {"(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{"}
 
 
 def rtl(text):
-    # אם אין בטקסט אף תו עברי (למשל כותרת אנגלית טהורה כמו "Snake for
-    # Windows"), אין שום סיבה להפוך את סדר המילים - הוא כבר תקין כמו שהוא.
     if not any(1424 < ord(c) < 1536 for c in text):
         return text
 
     def flip_word(w):
         if any(1424 < ord(c) < 1536 for c in w):
-            # הופכים את סדר התווים, ובנוסף "משקפים" סוגריים - אחרת "(" ו-")"
-            # יוצגו הפוך ויזואלית אחרי שהפכנו את הטקסט.
             return "".join(_BRACKET_MIRROR.get(c, c) for c in reversed(w))
         return w
 
@@ -266,7 +234,6 @@ def draw_text(text, color, y_offset=0, font=font_style):
 
 
 def draw_grid():
-    """קווי רשת עדינים על הרקע - נותן תחושה קלאסית של מסך LCD ישן."""
     for gx in range(0, WIDTH, BLOCK_SIZE):
         pygame.draw.line(screen, GRID_LINE_COLOR, (gx, 0), (gx, HEIGHT), 1)
     for gy in range(0, HEIGHT, BLOCK_SIZE):
@@ -274,7 +241,6 @@ def draw_grid():
 
 
 def draw_bezel():
-    """מסגרת כהה סביב כל המסך - מזכירה את המראה של מכשיר נוקיה ישן."""
     pygame.draw.rect(screen, BEZEL_COLOR, (0, 0, WIDTH, HEIGHT), width=6)
 
 
@@ -286,7 +252,6 @@ def draw_snake(block_size, snake_list, direction=(1, 0)):
         if is_head:
             color = SNAKE_HEAD_COLOR
         else:
-            # מדרג צבע קל מהזנב (בהיר) לכיוון הראש (כהה) - נותן תחושת עומק
             t = i / max(n - 1, 1)
             color = tuple(
                 int(SNAKE_TAIL_COLOR[c] + (SNAKE_BODY_COLOR[c] - SNAKE_TAIL_COLOR[c]) * t)
@@ -298,11 +263,10 @@ def draw_snake(block_size, snake_list, direction=(1, 0)):
     if not snake_list:
         return
 
-    # עיניים על הראש, ממוקמות לפי כיוון התנועה - כך נראה שהנחש "מביט" קדימה
     hx, hy = snake_list[-1]
     dx, dy = direction
     if dx == 0 and dy == 0:
-        dx = 1  # בעמידה - ברירת מחדל להסתכל ימינה
+        dx = 1
     if dx == 1:
         eyes = [(hx + block_size - 6, hy + 5), (hx + block_size - 6, hy + block_size - 5)]
     elif dx == -1:
@@ -316,7 +280,6 @@ def draw_snake(block_size, snake_list, direction=(1, 0)):
 
 
 def draw_food(foodx, foody):
-    """תפוח עם גבעול ועלה קטן, במקום עיגול אדום שטוח."""
     cx = foodx + BLOCK_SIZE / 2
     cy = foody + BLOCK_SIZE / 2
     radius = BLOCK_SIZE / 2 - 1
@@ -330,17 +293,32 @@ def draw_food(foodx, foody):
     pygame.draw.ellipse(screen, LEAF_COLOR, leaf_rect)
 
 
-def spawn_food(snake_list):
-    # לוודא שהתפוח לא נוצר בתוך גוף הנחש
+def draw_special_food(foodx, foody):
+    """תפוח זהב מיוחד עם עלה וניצוץ מוזהב."""
+    cx = foodx + BLOCK_SIZE / 2
+    cy = foody + BLOCK_SIZE / 2
+    radius = BLOCK_SIZE / 2 - 1
+
+    pygame.draw.circle(screen, SPECIAL_APPLE_COLOR, (int(cx), int(cy) + 2), int(radius))
+    pygame.draw.circle(screen, (255, 255, 220), (int(cx - radius / 2.5), int(cy - radius / 2.5) + 2), 2)
+    pygame.draw.line(screen, STEM_COLOR, (cx, foody + 2), (cx + 3, foody - 3), 2)
+
+    leaf_rect = pygame.Rect(0, 0, 8, 5)
+    leaf_rect.center = (cx + 6, foody - 1)
+    pygame.draw.ellipse(screen, (50, 205, 50), leaf_rect)
+
+
+def spawn_food(snake_list, extra_occupied=None):
+    if extra_occupied is None:
+        extra_occupied = []
     while True:
         fx = round(random.randrange(0, WIDTH - BLOCK_SIZE) / 20.0) * 20.0
         fy = round(random.randrange(0, HEIGHT - BLOCK_SIZE) / 20.0) * 20.0
-        if [fx, fy] not in snake_list:
+        if [fx, fy] not in snake_list and [fx, fy] not in extra_occupied:
             return fx, fy
 
 
 def pause_screen():
-    """מסך השהיה - עוצר את המשחק בלי לצייר מעל הנחש בלולאה עסוקה מיותרת."""
     paused = True
     overlay = pygame.Surface((WIDTH, HEIGHT))
     overlay.set_alpha(120)
@@ -362,10 +340,6 @@ def pause_screen():
 
 
 def gameLoop(base_speed):
-    """
-    שימוש ב-while חיצוני עם restart flag במקום רקורסיה -
-    כך "שחק שוב" לא צובר call stack ולא גורם ל-RecursionError.
-    """
     restart = True
     while restart:
         restart = False
@@ -381,11 +355,24 @@ def gameLoop(base_speed):
         length_of_snake = 1
         score = 0
         high_score = get_high_score()
-        speed = base_speed  # מהירות נוכחית - תעלה בהדרגה ככל שהנחש גדל
+        speed = base_speed
 
         foodx, foody = spawn_food(snake_list)
 
+        # משתנים לתפוח הבונוס המוזהב
+        special_food_active = False
+        special_food_x = -1
+        special_food_y = -1
+        special_spawn_time = 0
+        SPECIAL_DURATION = 5000  # 5 שניות
+
         while not game_over:
+            current_time = pygame.time.get_ticks()
+
+            # העלמת תפוח מיוחד אם עברו 5 שניות
+            if special_food_active and (current_time - special_spawn_time > SPECIAL_DURATION):
+                special_food_active = False
+
             while game_close:
                 screen.fill(BG_COLOR)
                 draw_grid()
@@ -432,8 +419,6 @@ def gameLoop(base_speed):
                     elif event.key == pygame.K_p:
                         pause_screen()
 
-            # תזוזה קודם, ואז בדיקת גלישת קיר - כך אין פריים
-            # שבו הנחש מצויר רגע אחד מחוץ למסך.
             x1 += x1_change
             y1 += y1_change
 
@@ -449,6 +434,9 @@ def gameLoop(base_speed):
             screen.fill(BG_COLOR)
             draw_grid()
             draw_food(foodx, foody)
+
+            if special_food_active:
+                draw_special_food(special_food_x, special_food_y)
 
             snake_head = [x1, y1]
             snake_list.append(snake_head)
@@ -480,17 +468,34 @@ def gameLoop(base_speed):
             draw_bezel()
             pygame.display.update()
 
+            # אכילת תפוח רגיל
             if x1 == foodx and y1 == foody:
                 play_sound(CRUNCH_SOUND)
-                foodx, foody = spawn_food(snake_list)
+                occupied = [[special_food_x, special_food_y]] if special_food_active else []
+                foodx, foody = spawn_food(snake_list, extra_occupied=occupied)
                 length_of_snake += 1
                 score += 10
-                # קושי עולה בהדרגה: כל 5 תפוחים המהירות עולה, עד תקרה סבירה
+
+                # סיכוי להופעת תפוח מיוחד (15% סיכוי)
+                if not special_food_active and random.randint(1, 100) <= 15:
+                    special_food_x, special_food_y = spawn_food(snake_list, extra_occupied=[[foodx, foody]])
+                    special_food_active = True
+                    special_spawn_time = current_time
+
                 if length_of_snake % 5 == 0:
                     old_speed = speed
                     speed = min(speed + 1, base_speed + 8)
                     if speed != old_speed:
                         play_sound(LEVELUP_SOUND)
+
+            # אכילת תפוח מוזהב מיוחד
+            if special_food_active and x1 == special_food_x and y1 == special_food_y:
+                play_sound(SPECIAL_SOUND if SPECIAL_SOUND else LEVELUP_SOUND)
+                special_food_active = False
+                length_of_snake += 1
+                time_alive = current_time - special_spawn_time
+                bonus_points = max(10, 50 - int((time_alive / SPECIAL_DURATION) * 40))
+                score += bonus_points
 
             clock.tick(speed)
 
@@ -498,7 +503,7 @@ def gameLoop(base_speed):
 def main_menu():
     speed = 10
     menu = True
-    update_info = check_for_update()  # נבדק פעם אחת בכניסה לתפריט, לא בכל פריים
+    update_info = check_for_update()
     update_message = ""
 
     while menu:
