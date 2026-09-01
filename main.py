@@ -32,6 +32,31 @@ TEXT_COLOR = (20, 20, 20)
 WIDTH, HEIGHT = 600, 400
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Snake for Windows - נוקיה 225")
+
+try:
+    icon_surface = pygame.image.load(resource_path(os.path.join("assets", "icon.png")))
+    pygame.display.set_icon(icon_surface)
+except Exception:
+    pass  # אם האייקון לא נמצא, פשוט ממשיכים בלי אחד - לא קריטי
+
+try:
+    pygame.mixer.init()
+    CRUNCH_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "crunch.wav")))
+    GAMEOVER_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "gameover.wav")))
+    LEVELUP_SOUND = pygame.mixer.Sound(resource_path(os.path.join("assets", "levelup.wav")))
+    SOUND_ENABLED = True
+except Exception:
+    # אין כרטיס קול / קבצי הצליל חסרים - המשחק ימשיך לעבוד, פשוט בלי צלילים
+    CRUNCH_SOUND = GAMEOVER_SOUND = LEVELUP_SOUND = None
+    SOUND_ENABLED = False
+
+
+def play_sound(sound):
+    if SOUND_ENABLED and sound is not None:
+        try:
+            sound.play()
+        except Exception:
+            pass
 clock = pygame.time.Clock()
 
 BLOCK_SIZE = 20
@@ -45,6 +70,19 @@ else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SCORE_FILE = os.path.join(APP_DIR, "high_score.json")
+
+
+def resource_path(relative_path):
+    """
+    נתיב לקבצי משאבים (תמונות/צלילים) שעובד גם כשמריצים python main.py
+    וגם בתוך exe מקומפל של PyInstaller (--add-data), שם הקבצים מחולצים
+    בזמן ריצה לתיקייה זמנית שכתובתה ב-sys._MEIPASS.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        base_path = sys._MEIPASS
+    else:
+        base_path = APP_DIR
+    return os.path.join(base_path, relative_path)
 
 def _load_hebrew_font(size, bold=False):
     """
@@ -421,6 +459,7 @@ def gameLoop(base_speed):
             for segment in snake_list[:-1]:
                 if segment == snake_head:
                     game_close = True
+                    play_sound(GAMEOVER_SOUND)
 
             move_dir = (
                 1 if x1_change > 0 else -1 if x1_change < 0 else 0,
@@ -442,12 +481,16 @@ def gameLoop(base_speed):
             pygame.display.update()
 
             if x1 == foodx and y1 == foody:
+                play_sound(CRUNCH_SOUND)
                 foodx, foody = spawn_food(snake_list)
                 length_of_snake += 1
                 score += 10
                 # קושי עולה בהדרגה: כל 5 תפוחים המהירות עולה, עד תקרה סבירה
                 if length_of_snake % 5 == 0:
+                    old_speed = speed
                     speed = min(speed + 1, base_speed + 8)
+                    if speed != old_speed:
+                        play_sound(LEVELUP_SOUND)
 
             clock.tick(speed)
 
