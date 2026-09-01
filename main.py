@@ -16,8 +16,16 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/lates
 
 # --- הגדרות צבעים (סגנון רטרו נוקיה) ---
 BG_COLOR = (135, 170, 101)
-SNAKE_COLOR = (34, 45, 34)
+GRID_LINE_COLOR = (125, 160, 93)     # קווי רשת עדינים על הרקע, כמו במסך LCD ישן
+BEZEL_COLOR = (60, 80, 45)           # מסגרת כהה סביב המסך - כמו מכשיר נוקיה
+SNAKE_HEAD_COLOR = (18, 26, 18)
+SNAKE_BODY_COLOR = (34, 45, 34)
+SNAKE_TAIL_COLOR = (70, 95, 65)      # הזנב בהיר יותר מהראש - יוצר מדרג עומק
+SNAKE_OUTLINE_COLOR = (15, 20, 15)
 APPLE_COLOR = (200, 0, 0)
+APPLE_HIGHLIGHT = (255, 150, 150)
+LEAF_COLOR = (40, 130, 40)
+STEM_COLOR = (90, 60, 30)
 TEXT_COLOR = (20, 20, 20)
 
 # --- הגדרות מסך ---
@@ -193,17 +201,24 @@ def apply_update(release_data):
 # הפיכת טקסט עברי בלי לשבור מספרים/אנגלית בתוך אותה שורה:
 # הופכים את סדר ה"מילים", ואת התווים בתוך כל מילה עברית בלבד -
 # כך "שיא: 10" לא הופך ל-"01 :שיא".
+_BRACKET_MIRROR = {"(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{"}
+
+
 def rtl(text):
     # אם אין בטקסט אף תו עברי (למשל כותרת אנגלית טהורה כמו "Snake for
     # Windows"), אין שום סיבה להפוך את סדר המילים - הוא כבר תקין כמו שהוא.
     if not any(1424 < ord(c) < 1536 for c in text):
         return text
 
+    def flip_word(w):
+        if any(1424 < ord(c) < 1536 for c in w):
+            # הופכים את סדר התווים, ובנוסף "משקפים" סוגריים - אחרת "(" ו-")"
+            # יוצגו הפוך ויזואלית אחרי שהפכנו את הטקסט.
+            return "".join(_BRACKET_MIRROR.get(c, c) for c in reversed(w))
+        return w
+
     words = text.split(" ")
-    return " ".join(
-        w[::-1] if any(1424 < ord(c) < 1536 for c in w) else w
-        for w in reversed(words)
-    )
+    return " ".join(flip_word(w) for w in reversed(words))
 
 
 def draw_text(text, color, y_offset=0, font=font_style):
@@ -212,11 +227,69 @@ def draw_text(text, color, y_offset=0, font=font_style):
     screen.blit(mesg, text_rect)
 
 
-def draw_snake(block_size, snake_list):
-    for i, x in enumerate(snake_list):
-        # הראש מעט כהה יותר מהגוף - עוזר להתמצא לאיזה כיוון הנחש פונה
-        color = SNAKE_COLOR if i < len(snake_list) - 1 else (20, 28, 20)
-        pygame.draw.rect(screen, color, [x[0], x[1], block_size, block_size], border_radius=3)
+def draw_grid():
+    """קווי רשת עדינים על הרקע - נותן תחושה קלאסית של מסך LCD ישן."""
+    for gx in range(0, WIDTH, BLOCK_SIZE):
+        pygame.draw.line(screen, GRID_LINE_COLOR, (gx, 0), (gx, HEIGHT), 1)
+    for gy in range(0, HEIGHT, BLOCK_SIZE):
+        pygame.draw.line(screen, GRID_LINE_COLOR, (0, gy), (WIDTH, gy), 1)
+
+
+def draw_bezel():
+    """מסגרת כהה סביב כל המסך - מזכירה את המראה של מכשיר נוקיה ישן."""
+    pygame.draw.rect(screen, BEZEL_COLOR, (0, 0, WIDTH, HEIGHT), width=6)
+
+
+def draw_snake(block_size, snake_list, direction=(1, 0)):
+    n = len(snake_list)
+    for i, seg in enumerate(snake_list):
+        rect = [seg[0], seg[1], block_size, block_size]
+        is_head = i == n - 1
+        if is_head:
+            color = SNAKE_HEAD_COLOR
+        else:
+            # מדרג צבע קל מהזנב (בהיר) לכיוון הראש (כהה) - נותן תחושת עומק
+            t = i / max(n - 1, 1)
+            color = tuple(
+                int(SNAKE_TAIL_COLOR[c] + (SNAKE_BODY_COLOR[c] - SNAKE_TAIL_COLOR[c]) * t)
+                for c in range(3)
+            )
+        pygame.draw.rect(screen, color, rect, border_radius=6)
+        pygame.draw.rect(screen, SNAKE_OUTLINE_COLOR, rect, width=1, border_radius=6)
+
+    if not snake_list:
+        return
+
+    # עיניים על הראש, ממוקמות לפי כיוון התנועה - כך נראה שהנחש "מביט" קדימה
+    hx, hy = snake_list[-1]
+    dx, dy = direction
+    if dx == 0 and dy == 0:
+        dx = 1  # בעמידה - ברירת מחדל להסתכל ימינה
+    if dx == 1:
+        eyes = [(hx + block_size - 6, hy + 5), (hx + block_size - 6, hy + block_size - 5)]
+    elif dx == -1:
+        eyes = [(hx + 6, hy + 5), (hx + 6, hy + block_size - 5)]
+    elif dy == 1:
+        eyes = [(hx + 5, hy + block_size - 6), (hx + block_size - 5, hy + block_size - 6)]
+    else:
+        eyes = [(hx + 5, hy + 6), (hx + block_size - 5, hy + 6)]
+    for ex, ey in eyes:
+        pygame.draw.circle(screen, (235, 235, 225), (int(ex), int(ey)), 2)
+
+
+def draw_food(foodx, foody):
+    """תפוח עם גבעול ועלה קטן, במקום עיגול אדום שטוח."""
+    cx = foodx + BLOCK_SIZE / 2
+    cy = foody + BLOCK_SIZE / 2
+    radius = BLOCK_SIZE / 2 - 1
+
+    pygame.draw.circle(screen, APPLE_COLOR, (int(cx), int(cy) + 2), int(radius))
+    pygame.draw.circle(screen, APPLE_HIGHLIGHT, (int(cx - radius / 2.5), int(cy - radius / 2.5) + 2), 2)
+    pygame.draw.line(screen, STEM_COLOR, (cx, foody + 2), (cx + 3, foody - 3), 2)
+
+    leaf_rect = pygame.Rect(0, 0, 8, 5)
+    leaf_rect.center = (cx + 6, foody - 1)
+    pygame.draw.ellipse(screen, LEAF_COLOR, leaf_rect)
 
 
 def spawn_food(snake_list):
@@ -235,9 +308,11 @@ def pause_screen():
     overlay.set_alpha(120)
     overlay.fill((0, 0, 0))
     while paused:
+        draw_grid()
         screen.blit(overlay, (0, 0))
         draw_text("השהייה", TEXT_COLOR, -20)
         draw_text("לחץ P כדי להמשיך", TEXT_COLOR, 20, score_font)
+        draw_bezel()
         pygame.display.update()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -275,6 +350,7 @@ def gameLoop(base_speed):
         while not game_over:
             while game_close:
                 screen.fill(BG_COLOR)
+                draw_grid()
                 if score > high_score:
                     save_high_score(score)
                     high_score = score
@@ -283,6 +359,7 @@ def gameLoop(base_speed):
                 draw_text("נפסלת!", APPLE_COLOR, -30)
                 draw_text("לחץ C לשחק שוב, Q לתפריט", TEXT_COLOR, 10)
                 draw_text(f"הניקוד שלך: {score}", TEXT_COLOR, 50, score_font)
+                draw_bezel()
                 pygame.display.update()
 
                 for event in pygame.event.get():
@@ -332,7 +409,8 @@ def gameLoop(base_speed):
                 y1 = HEIGHT - BLOCK_SIZE
 
             screen.fill(BG_COLOR)
-            pygame.draw.rect(screen, APPLE_COLOR, [foodx, foody, BLOCK_SIZE, BLOCK_SIZE], border_radius=10)
+            draw_grid()
+            draw_food(foodx, foody)
 
             snake_head = [x1, y1]
             snake_list.append(snake_head)
@@ -344,13 +422,23 @@ def gameLoop(base_speed):
                 if segment == snake_head:
                     game_close = True
 
-            draw_snake(BLOCK_SIZE, snake_list)
+            move_dir = (
+                1 if x1_change > 0 else -1 if x1_change < 0 else 0,
+                1 if y1_change > 0 else -1 if y1_change < 0 else 0,
+            )
+            draw_snake(BLOCK_SIZE, snake_list, direction=move_dir)
 
-            score_text = score_font.render(rtl(f"שיא: {high_score} | ניקוד: {score}"), True, TEXT_COLOR)
-            screen.blit(score_text, [10, 10])
-            pause_hint = small_font.render(rtl("P להשהיה"), True, TEXT_COLOR)
-            screen.blit(pause_hint, [WIDTH - pause_hint.get_width() - 10, 12])
+            score_panel = pygame.Surface((WIDTH, 34))
+            score_panel.set_alpha(90)
+            score_panel.fill((0, 0, 0))
+            screen.blit(score_panel, (0, 0))
 
+            score_text = score_font.render(rtl(f"שיא: {high_score} | ניקוד: {score}"), True, (240, 240, 235))
+            screen.blit(score_text, [10, 8])
+            pause_hint = small_font.render(rtl("P להשהיה"), True, (240, 240, 235))
+            screen.blit(pause_hint, [WIDTH - pause_hint.get_width() - 10, 10])
+
+            draw_bezel()
             pygame.display.update()
 
             if x1 == foodx and y1 == foody:
@@ -372,6 +460,7 @@ def main_menu():
 
     while menu:
         screen.fill(BG_COLOR)
+        draw_grid()
         draw_text("Snake for Windows", TEXT_COLOR, -120, font_style)
         draw_text(f"נוקיה 225 - מהדורה רטרו (v{VERSION})", TEXT_COLOR, -90, score_font)
         draw_text("1. התחל משחק", TEXT_COLOR, -30)
@@ -379,9 +468,10 @@ def main_menu():
         draw_text("3. יציאה", TEXT_COLOR, 50)
         draw_text(f"שיא נוכחי: {get_high_score()}", TEXT_COLOR, 90, score_font)
         if update_info:
-            draw_text(f"4. עדכון לגרסה {update_info.get('tag_name', '')} זמין!", (0, 90, 0), 130, small_font)
+            draw_text(f"4. לחצו לעדכון לגרסה {update_info.get('tag_name', '')}!", (0, 90, 0), 130, small_font)
         if update_message:
             draw_text(update_message, APPLE_COLOR, 160, small_font)
+        draw_bezel()
         pygame.display.update()
 
         for event in pygame.event.get():
