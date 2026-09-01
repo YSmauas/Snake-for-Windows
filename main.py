@@ -38,14 +38,50 @@ else:
 
 SCORE_FILE = os.path.join(APP_DIR, "high_score.json")
 
-try:
-    font_style = pygame.font.SysFont("arial", 25, bold=True)
-    score_font = pygame.font.SysFont("arial", 20, bold=True)
-    small_font = pygame.font.SysFont("arial", 16, bold=True)
-except Exception:
-    font_style = pygame.font.Font(None, 25)
-    score_font = pygame.font.Font(None, 20)
-    small_font = pygame.font.Font(None, 16)
+def _load_hebrew_font(size, bold=False):
+    """
+    טוען גופן שתומך בעברית בצורה אמינה.
+
+    pygame.font.SysFont() מחפש גופן "לפי שם" - וזה מנגנון לא אמין בתוך exe
+    מקומפל, בעיקר במחשבים עם הגדרות שפה/אזור שאינן en-US: הוא נכשל בשקט
+    (בלי לזרוק שגיאה!) ונופל חזרה לגופן ברירת המחדל הפנימי של pygame, שלא
+    כולל תווי עברית בכלל - וזה בדיוק מה שגורם לריבועים ריקים (□) על המסך.
+
+    הפתרון: לטעון את קובץ הגופן ישירות לפי נתיב בדיסק (לא לפי שם), מה
+    שעוקף את מנגנון ה-matching הבעייתי. arial.ttf קיים כמעט בוודאות בכל
+    מחשב Windows.
+    """
+    candidate_paths = [
+        r"C:\Windows\Fonts\arial.ttf",
+        r"C:\Windows\Fonts\tahoma.ttf",
+        r"C:\Windows\Fonts\segoeui.ttf",
+        r"C:\Windows\Fonts\davidlibre.ttf",
+        r"C:\Windows\Fonts\times.ttf",
+    ]
+    for path in candidate_paths:
+        if os.path.exists(path):
+            try:
+                font = pygame.font.Font(path, size)
+                font.set_bold(bold)
+                return font
+            except Exception:
+                continue
+
+    # לא נמצא קובץ גופן ישיר - ניסיון אחרון עם match_font (חיפוש לפי שם)
+    fallback_path = pygame.font.match_font("arial,tahoma,segoeui,davidlibre", bold=bold)
+    if fallback_path:
+        try:
+            return pygame.font.Font(fallback_path, size)
+        except Exception:
+            pass
+
+    # מוצא אחרון - גופן ברירת המחדל של pygame (לא יתמוך בעברית, אך עדיף מקריסה)
+    return pygame.font.Font(None, size)
+
+
+font_style = _load_hebrew_font(25, bold=True)
+score_font = _load_hebrew_font(20, bold=True)
+small_font = _load_hebrew_font(16, bold=True)
 
 
 def get_high_score():
@@ -158,6 +194,11 @@ def apply_update(release_data):
 # הופכים את סדר ה"מילים", ואת התווים בתוך כל מילה עברית בלבד -
 # כך "שיא: 10" לא הופך ל-"01 :שיא".
 def rtl(text):
+    # אם אין בטקסט אף תו עברי (למשל כותרת אנגלית טהורה כמו "Snake for
+    # Windows"), אין שום סיבה להפוך את סדר המילים - הוא כבר תקין כמו שהוא.
+    if not any(1424 < ord(c) < 1536 for c in text):
+        return text
+
     words = text.split(" ")
     return " ".join(
         w[::-1] if any(1424 < ord(c) < 1536 for c in w) else w
