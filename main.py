@@ -10,7 +10,7 @@ import subprocess
 pygame.init()
 
 # --- מספר הגרסה הנוכחי (חייב להתאים לתגית ה-Release בגיטהאב, למשל v1.0.0) ---
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 GITHUB_REPO = "YSmauas/Snake-for-Windows"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
