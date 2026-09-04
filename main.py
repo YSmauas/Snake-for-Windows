@@ -14,25 +14,49 @@ VERSION = "1.0.0"
 GITHUB_REPO = "YSmauas/Snake-for-Windows"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
-# --- הגדרות צבעים (סגנון רטרו נוקיה) ---
+# --- צבעי לוח המשחק (סגנון רטרו נוקיה) - אלה נשארים בדיוק כמו שהיו ---
 BG_COLOR = (135, 170, 101)
-GRID_LINE_COLOR = (125, 160, 93)     # קווי רשת עדינים על הרקע, כמו במסך LCD ישן
-BEZEL_COLOR = (60, 80, 45)           # מסגרת כהה סביב המסך - כמו מכשיר נוקיה
+GRID_LINE_COLOR = (125, 160, 93)
+BEZEL_COLOR = (60, 80, 45)           # מסגרת כהה סביב לוח המשחק בלבד
 SNAKE_HEAD_COLOR = (18, 26, 18)
 SNAKE_BODY_COLOR = (34, 45, 34)
-SNAKE_TAIL_COLOR = (70, 95, 65)      # הזנב בהיר יותר מהראש - יוצר מדרג עומק
+SNAKE_TAIL_COLOR = (70, 95, 65)
 SNAKE_OUTLINE_COLOR = (15, 20, 15)
 APPLE_COLOR = (200, 0, 0)
 APPLE_HIGHLIGHT = (255, 150, 150)
 LEAF_COLOR = (40, 130, 40)
 STEM_COLOR = (90, 60, 30)
-TEXT_COLOR = (20, 20, 20)
 SPECIAL_APPLE_COLOR = (255, 215, 0)
 
-# --- הגדרות מסך ---
-WIDTH, HEIGHT = 600, 400
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+# --- צבעי ה"מסגרת" המודרנית - כל מה שמחוץ ללוח המשחק עצמו ---
+MODERN_BG = (28, 30, 38)
+MODERN_PANEL = (40, 43, 54)
+MODERN_BORDER = (63, 67, 82)
+MODERN_TEXT = (235, 236, 240)
+MODERN_TEXT_DIM = (152, 157, 173)
+MODERN_ACCENT = (255, 199, 79)
+MODERN_SUCCESS = (110, 220, 140)
+MODERN_DANGER = (255, 99, 99)
+
+# --- לוח המשחק עצמו - בדיוק אותו גודל כמו קודם, שום דבר בהיגיון המשחק לא משתנה ---
+BOARD_WIDTH, BOARD_HEIGHT = 600, 400
+BLOCK_SIZE = 20
+
+# --- ה"מסגרת" המודרנית מסביב: שורת סטטוס למעלה + שוליים מכל הצדדים ---
+MARGIN = 24
+TOP_BAR_HEIGHT = 60
+WINDOW_WIDTH = BOARD_WIDTH + MARGIN * 2
+WINDOW_HEIGHT = TOP_BAR_HEIGHT + BOARD_HEIGHT + MARGIN * 2
+BOARD_X = MARGIN
+BOARD_Y = TOP_BAR_HEIGHT + MARGIN
+
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Snake for Windows - נוקיה 225")
+
+# "board" הוא subsurface - חלון פנימי בתוך screen, במיקום BOARD_X, BOARD_Y.
+# ציור על board משתמש באותן קואורדינטות מקומיות (0,0) עד (600,400) בדיוק כמו
+# קודם - קוד התנועה/ההתנגשות/הציור של הנחש לא צריך לדעת שהמסך הכולל גדול יותר.
+board = screen.subsurface(pygame.Rect(BOARD_X, BOARD_Y, BOARD_WIDTH, BOARD_HEIGHT))
 
 # נתיב בטוח גם כשהמשחק ארוז ל-exe (PyInstaller --onefile)
 if getattr(sys, "frozen", False):
@@ -82,10 +106,13 @@ def play_sound(sound):
 
 
 clock = pygame.time.Clock()
-BLOCK_SIZE = 20
 
 
 def _load_hebrew_font(size, bold=False):
+    """
+    טוען גופן שתומך בעברית בצורה אמינה - ישירות לפי נתיב קובץ, לא לפי שם
+    (SysFont לפי שם לא אמין בתוך exe מקומפל ועלול להחזיר גופן בלי עברית).
+    """
     candidate_paths = [
         r"C:\Windows\Fonts\arial.ttf",
         r"C:\Windows\Fonts\tahoma.ttf",
@@ -132,10 +159,11 @@ def save_high_score(score):
         with open(SCORE_FILE, "w", encoding="utf-8") as file:
             json.dump({"high_score": score}, file)
     except OSError:
-        pass
+        pass  # אין הרשאת כתיבה - לא קריטי, פשוט לא נשמור הפעם
 
 
 def _parse_version(v):
+    """'v1.2.3' / '1.2.3' -> (1, 2, 3), כדי להשוות גרסאות כמספרים ולא כמחרוזות."""
     v = v.lstrip("vV")
     parts = []
     for p in v.split("."):
@@ -147,6 +175,10 @@ def _parse_version(v):
 
 
 def check_for_update():
+    """
+    בודק מול ה-Release האחרון בגיטהאב אם יש גרסה חדשה מהגרסה הנוכחית.
+    לעולם לא מפיל את המשחק - אין אינטרנט / גיטהאב לא זמין = פשוט לא מוצע עדכון.
+    """
     try:
         req = urllib.request.Request(
             LATEST_RELEASE_API,
@@ -170,6 +202,7 @@ def _find_exe_asset_url(release_data):
 
 
 def apply_update(release_data):
+    """מוריד את ה-exe מה-Release האחרון ומחליף את קובץ ה-exe הרץ כרגע (רק בגרסת exe)."""
     if not getattr(sys, "frozen", False):
         return False, "עדכון אוטומטי זמין רק בגרסת ה-exe. הריצו python update.py לעדכון קוד המקור."
 
@@ -215,6 +248,7 @@ _BRACKET_MIRROR = {"(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{"}
 
 
 def rtl(text):
+    # אם אין בטקסט אף תו עברי (למשל כותרת אנגלית טהורה), אין סיבה להפוך סדר מילים.
     if not any(1424 < ord(c) < 1536 for c in text):
         return text
 
@@ -227,21 +261,61 @@ def rtl(text):
     return " ".join(flip_word(w) for w in reversed(words))
 
 
-def draw_text(text, color, y_offset=0, font=font_style):
+def draw_text(text, color, y_offset=0, font=font_style, surface=None, area_w=None, area_h=None):
+    """
+    מצייר טקסט ממורכז. כברירת מחדל מצייר על כל החלון (למסך התפריט המודרני);
+    כדי למרכז טקסט בתוך לוח המשחק בלבד (השהייה / נפסלת), משתמשים ב-draw_board_text.
+    """
+    surface = screen if surface is None else surface
+    area_w = WINDOW_WIDTH if area_w is None else area_w
+    area_h = WINDOW_HEIGHT if area_h is None else area_h
     mesg = font.render(rtl(text), True, color)
-    text_rect = mesg.get_rect(center=(WIDTH / 2, HEIGHT / 2 + y_offset))
-    screen.blit(mesg, text_rect)
+    text_rect = mesg.get_rect(center=(area_w / 2, area_h / 2 + y_offset))
+    surface.blit(mesg, text_rect)
+
+
+def draw_board_text(text, color, y_offset=0, font=font_style):
+    draw_text(text, color, y_offset, font, surface=board, area_w=BOARD_WIDTH, area_h=BOARD_HEIGHT)
 
 
 def draw_grid():
-    for gx in range(0, WIDTH, BLOCK_SIZE):
-        pygame.draw.line(screen, GRID_LINE_COLOR, (gx, 0), (gx, HEIGHT), 1)
-    for gy in range(0, HEIGHT, BLOCK_SIZE):
-        pygame.draw.line(screen, GRID_LINE_COLOR, (0, gy), (WIDTH, gy), 1)
+    for gx in range(0, BOARD_WIDTH, BLOCK_SIZE):
+        pygame.draw.line(board, GRID_LINE_COLOR, (gx, 0), (gx, BOARD_HEIGHT), 1)
+    for gy in range(0, BOARD_HEIGHT, BLOCK_SIZE):
+        pygame.draw.line(board, GRID_LINE_COLOR, (0, gy), (BOARD_WIDTH, gy), 1)
 
 
-def draw_bezel():
-    pygame.draw.rect(screen, BEZEL_COLOR, (0, 0, WIDTH, HEIGHT), width=6)
+def draw_board_frame():
+    """מסגרת דקה סביב לוח המשחק בלבד - לא סביב כל החלון."""
+    pygame.draw.rect(
+        screen, BEZEL_COLOR,
+        (BOARD_X - 3, BOARD_Y - 3, BOARD_WIDTH + 6, BOARD_HEIGHT + 6),
+        width=3, border_radius=4,
+    )
+
+
+def draw_top_bar(high_score, score):
+    """שורת הסטטוס - עכשיו מחוץ ללוח המשחק לגמרי, לא מכסה יותר אריחים של המשחק."""
+    pygame.draw.rect(screen, MODERN_PANEL, (0, 0, WINDOW_WIDTH, TOP_BAR_HEIGHT))
+    pygame.draw.line(screen, MODERN_BORDER, (0, TOP_BAR_HEIGHT), (WINDOW_WIDTH, TOP_BAR_HEIGHT), 2)
+
+    score_text = score_font.render(rtl(f"שיא: {high_score} | ניקוד: {score}"), True, MODERN_TEXT)
+    screen.blit(score_text, [MARGIN, (TOP_BAR_HEIGHT - score_text.get_height()) // 2])
+
+    pause_hint = small_font.render(rtl("P להשהיה"), True, MODERN_TEXT_DIM)
+    screen.blit(pause_hint, [WINDOW_WIDTH - pause_hint.get_width() - MARGIN, (TOP_BAR_HEIGHT - pause_hint.get_height()) // 2])
+
+
+def draw_chrome_margins():
+    """
+    ממלא רק את השוליים סביב הלוח (לא נוגע בלוח עצמו) - שימושי במסכי השהייה/סיום,
+    שם רוצים לשמר את התוכן הקפוא של הלוח ולא לצייר אותו מחדש מאפס.
+    """
+    pygame.draw.rect(screen, MODERN_BG, (0, TOP_BAR_HEIGHT, MARGIN, WINDOW_HEIGHT - TOP_BAR_HEIGHT))
+    right_x = BOARD_X + BOARD_WIDTH
+    pygame.draw.rect(screen, MODERN_BG, (right_x, TOP_BAR_HEIGHT, WINDOW_WIDTH - right_x, WINDOW_HEIGHT - TOP_BAR_HEIGHT))
+    bottom_y = BOARD_Y + BOARD_HEIGHT
+    pygame.draw.rect(screen, MODERN_BG, (0, bottom_y, WINDOW_WIDTH, WINDOW_HEIGHT - bottom_y))
 
 
 def draw_snake(block_size, snake_list, direction=(1, 0)):
@@ -257,8 +331,8 @@ def draw_snake(block_size, snake_list, direction=(1, 0)):
                 int(SNAKE_TAIL_COLOR[c] + (SNAKE_BODY_COLOR[c] - SNAKE_TAIL_COLOR[c]) * t)
                 for c in range(3)
             )
-        pygame.draw.rect(screen, color, rect, border_radius=6)
-        pygame.draw.rect(screen, SNAKE_OUTLINE_COLOR, rect, width=1, border_radius=6)
+        pygame.draw.rect(board, color, rect, border_radius=6)
+        pygame.draw.rect(board, SNAKE_OUTLINE_COLOR, rect, width=1, border_radius=6)
 
     if not snake_list:
         return
@@ -276,7 +350,7 @@ def draw_snake(block_size, snake_list, direction=(1, 0)):
     else:
         eyes = [(hx + 5, hy + 6), (hx + block_size - 5, hy + 6)]
     for ex, ey in eyes:
-        pygame.draw.circle(screen, (235, 235, 225), (int(ex), int(ey)), 2)
+        pygame.draw.circle(board, (235, 235, 225), (int(ex), int(ey)), 2)
 
 
 def draw_food(foodx, foody):
@@ -284,52 +358,68 @@ def draw_food(foodx, foody):
     cy = foody + BLOCK_SIZE / 2
     radius = BLOCK_SIZE / 2 - 1
 
-    pygame.draw.circle(screen, APPLE_COLOR, (int(cx), int(cy) + 2), int(radius))
-    pygame.draw.circle(screen, APPLE_HIGHLIGHT, (int(cx - radius / 2.5), int(cy - radius / 2.5) + 2), 2)
-    pygame.draw.line(screen, STEM_COLOR, (cx, foody + 2), (cx + 3, foody - 3), 2)
+    pygame.draw.circle(board, APPLE_COLOR, (int(cx), int(cy) + 2), int(radius))
+    pygame.draw.circle(board, APPLE_HIGHLIGHT, (int(cx - radius / 2.5), int(cy - radius / 2.5) + 2), 2)
+    pygame.draw.line(board, STEM_COLOR, (cx, foody + 2), (cx + 3, foody - 3), 2)
 
     leaf_rect = pygame.Rect(0, 0, 8, 5)
     leaf_rect.center = (cx + 6, foody - 1)
-    pygame.draw.ellipse(screen, LEAF_COLOR, leaf_rect)
+    pygame.draw.ellipse(board, LEAF_COLOR, leaf_rect)
 
 
 def draw_special_food(foodx, foody):
-    """תפוח זהב מיוחד עם עלה וניצוץ מוזהב."""
+    """תפוח זהב מיוחד - נעלם אחרי 5 שניות, ככל שתופסים אותו מהר יותר מקבלים יותר נקודות."""
     cx = foodx + BLOCK_SIZE / 2
     cy = foody + BLOCK_SIZE / 2
     radius = BLOCK_SIZE / 2 - 1
 
-    pygame.draw.circle(screen, SPECIAL_APPLE_COLOR, (int(cx), int(cy) + 2), int(radius))
-    pygame.draw.circle(screen, (255, 255, 220), (int(cx - radius / 2.5), int(cy - radius / 2.5) + 2), 2)
-    pygame.draw.line(screen, STEM_COLOR, (cx, foody + 2), (cx + 3, foody - 3), 2)
+    pygame.draw.circle(board, SPECIAL_APPLE_COLOR, (int(cx), int(cy) + 2), int(radius))
+    pygame.draw.circle(board, (255, 255, 220), (int(cx - radius / 2.5), int(cy - radius / 2.5) + 2), 2)
+    pygame.draw.line(board, STEM_COLOR, (cx, foody + 2), (cx + 3, foody - 3), 2)
 
     leaf_rect = pygame.Rect(0, 0, 8, 5)
     leaf_rect.center = (cx + 6, foody - 1)
-    pygame.draw.ellipse(screen, (50, 205, 50), leaf_rect)
+    pygame.draw.ellipse(board, (50, 205, 50), leaf_rect)
 
 
 def spawn_food(snake_list, extra_occupied=None):
     if extra_occupied is None:
         extra_occupied = []
     while True:
-        fx = round(random.randrange(0, WIDTH - BLOCK_SIZE) / 20.0) * 20.0
-        fy = round(random.randrange(0, HEIGHT - BLOCK_SIZE) / 20.0) * 20.0
+        fx = round(random.randrange(0, BOARD_WIDTH - BLOCK_SIZE) / 20.0) * 20.0
+        fy = round(random.randrange(0, BOARD_HEIGHT - BLOCK_SIZE) / 20.0) * 20.0
         if [fx, fy] not in snake_list and [fx, fy] not in extra_occupied:
             return fx, fy
 
 
-def pause_screen():
-    paused = True
-    overlay = pygame.Surface((WIDTH, HEIGHT))
-    overlay.set_alpha(120)
+def _dim_board():
+    overlay = pygame.Surface((BOARD_WIDTH, BOARD_HEIGHT))
+    overlay.set_alpha(150)
     overlay.fill((0, 0, 0))
+    board.blit(overlay, (0, 0))
+
+
+def pause_screen(high_score, score):
+    """
+    מסך השהייה: הכל *מחוץ* ללוח (שוליים, שורת הסטטוס) בסגנון מודרני כהה.
+    לוח המשחק עצמו קופא במקום (תמונת "צילום" של הרגע שבו נלחץ P) ומעומעם -
+    כדי שלא יכהה יותר ויותר בכל פריים, שומרים העתק אחד ומציירים אותו מחדש
+    בכל לולאה, במקום להמשיך "לעמעם על עצמו".
+    """
+    paused = True
+    pause_start = pygame.time.get_ticks()
+    board_snapshot = board.copy()
+
     while paused:
-        draw_grid()
-        screen.blit(overlay, (0, 0))
-        draw_text("השהייה", TEXT_COLOR, -20)
-        draw_text("לחץ P כדי להמשיך", TEXT_COLOR, 20, score_font)
-        draw_bezel()
+        draw_chrome_margins()
+        board.blit(board_snapshot, (0, 0))
+        _dim_board()
+        draw_top_bar(high_score, score)
+        draw_board_frame()
+        draw_board_text("השהייה", MODERN_TEXT, -20)
+        draw_board_text("לחץ P כדי להמשיך", MODERN_TEXT_DIM, 20, score_font)
         pygame.display.update()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -338,16 +428,23 @@ def pause_screen():
                 paused = False
         clock.tick(15)
 
+    return pygame.time.get_ticks() - pause_start  # כמה זמן היינו בהשהייה, במילישניות
+
 
 def gameLoop(base_speed):
+    """
+    שימוש ב-while חיצוני עם restart flag במקום רקורסיה -
+    כך "שחק שוב" לא צובר call stack ולא גורם ל-RecursionError.
+    """
     restart = True
     while restart:
         restart = False
         game_over = False
         game_close = False
+        close_snapshot = None
 
-        x1 = WIDTH / 2
-        y1 = HEIGHT / 2
+        x1 = BOARD_WIDTH / 2
+        y1 = BOARD_HEIGHT / 2
         x1_change = 0
         y1_change = 0
 
@@ -359,32 +456,38 @@ def gameLoop(base_speed):
 
         foodx, foody = spawn_food(snake_list)
 
-        # משתנים לתפוח הבונוס המוזהב
+        # משתני התפוח המוזהב המיוחד - נעלם אחרי 5 שניות
         special_food_active = False
         special_food_x = -1
         special_food_y = -1
         special_spawn_time = 0
-        SPECIAL_DURATION = 5000  # 5 שניות
+        SPECIAL_DURATION = 5000
+        SPECIAL_SPAWN_CHANCE = 15  # אחוזים
 
         while not game_over:
             current_time = pygame.time.get_ticks()
 
-            # העלמת תפוח מיוחד אם עברו 5 שניות
             if special_food_active and (current_time - special_spawn_time > SPECIAL_DURATION):
                 special_food_active = False
 
             while game_close:
-                screen.fill(BG_COLOR)
-                draw_grid()
+                if close_snapshot is None:
+                    close_snapshot = board.copy()
+
+                draw_chrome_margins()
+                board.blit(close_snapshot, (0, 0))
+                _dim_board()
+                draw_top_bar(high_score, score)
+                draw_board_frame()
+
                 if score > high_score:
                     save_high_score(score)
                     high_score = score
-                    draw_text("!שיא חדש!", APPLE_COLOR, -60)
+                    draw_board_text("!שיא חדש!", MODERN_ACCENT, -60)
 
-                draw_text("נפסלת!", APPLE_COLOR, -30)
-                draw_text("לחץ C לשחק שוב, Q לתפריט", TEXT_COLOR, 10)
-                draw_text(f"הניקוד שלך: {score}", TEXT_COLOR, 50, score_font)
-                draw_bezel()
+                draw_board_text("נפסלת!", MODERN_DANGER, -30)
+                draw_board_text("לחץ C לשחק שוב, Q לתפריט", MODERN_TEXT, 10)
+                draw_board_text(f"הניקוד שלך: {score}", MODERN_TEXT, 50, score_font)
                 pygame.display.update()
 
                 for event in pygame.event.get():
@@ -417,21 +520,27 @@ def gameLoop(base_speed):
                         y1_change = BLOCK_SIZE
                         x1_change = 0
                     elif event.key == pygame.K_p:
-                        pause_screen()
+                        paused_ms = pause_screen(high_score, score)
+                        # שומר שהתפוח המוזהב לא "ימות" בשקט בזמן שהמשחק מושהה
+                        if special_food_active:
+                            special_spawn_time += paused_ms
 
+            # תזוזה קודם, ואז בדיקת גלישת קיר - כך אין פריים
+            # שבו הנחש מצויר רגע אחד מחוץ ללוח.
             x1 += x1_change
             y1 += y1_change
 
-            if x1 >= WIDTH:
+            if x1 >= BOARD_WIDTH:
                 x1 = 0
             elif x1 < 0:
-                x1 = WIDTH - BLOCK_SIZE
-            if y1 >= HEIGHT:
+                x1 = BOARD_WIDTH - BLOCK_SIZE
+            if y1 >= BOARD_HEIGHT:
                 y1 = 0
             elif y1 < 0:
-                y1 = HEIGHT - BLOCK_SIZE
+                y1 = BOARD_HEIGHT - BLOCK_SIZE
 
-            screen.fill(BG_COLOR)
+            screen.fill(MODERN_BG)
+            board.fill(BG_COLOR)
             draw_grid()
             draw_food(foodx, foody)
 
@@ -455,17 +564,8 @@ def gameLoop(base_speed):
             )
             draw_snake(BLOCK_SIZE, snake_list, direction=move_dir)
 
-            score_panel = pygame.Surface((WIDTH, 34))
-            score_panel.set_alpha(90)
-            score_panel.fill((0, 0, 0))
-            screen.blit(score_panel, (0, 0))
-
-            score_text = score_font.render(rtl(f"שיא: {high_score} | ניקוד: {score}"), True, (240, 240, 235))
-            screen.blit(score_text, [10, 8])
-            pause_hint = small_font.render(rtl("P להשהיה"), True, (240, 240, 235))
-            screen.blit(pause_hint, [WIDTH - pause_hint.get_width() - 10, 10])
-
-            draw_bezel()
+            draw_top_bar(high_score, score)
+            draw_board_frame()
             pygame.display.update()
 
             # אכילת תפוח רגיל
@@ -476,8 +576,7 @@ def gameLoop(base_speed):
                 length_of_snake += 1
                 score += 10
 
-                # סיכוי להופעת תפוח מיוחד (15% סיכוי)
-                if not special_food_active and random.randint(1, 100) <= 15:
+                if not special_food_active and random.randint(1, 100) <= SPECIAL_SPAWN_CHANCE:
                     special_food_x, special_food_y = spawn_food(snake_list, extra_occupied=[[foodx, foody]])
                     special_food_active = True
                     special_spawn_time = current_time
@@ -488,7 +587,7 @@ def gameLoop(base_speed):
                     if speed != old_speed:
                         play_sound(LEVELUP_SOUND)
 
-            # אכילת תפוח מוזהב מיוחד
+            # אכילת תפוח מוזהב מיוחד - ככל שתופסים מהר יותר, יותר נקודות
             if special_food_active and x1 == special_food_x and y1 == special_food_y:
                 play_sound(SPECIAL_SOUND if SPECIAL_SOUND else LEVELUP_SOUND)
                 special_food_active = False
@@ -507,19 +606,25 @@ def main_menu():
     update_message = ""
 
     while menu:
-        screen.fill(BG_COLOR)
-        draw_grid()
-        draw_text("Snake for Windows", TEXT_COLOR, -120, font_style)
-        draw_text(f"נוקיה 225 - מהדורה רטרו (v{VERSION})", TEXT_COLOR, -90, score_font)
-        draw_text("1. התחל משחק", TEXT_COLOR, -30)
-        draw_text("2. מהירות (כרגע: " + ("קל" if speed == 7 else "רגיל" if speed == 10 else "קשה") + ")", TEXT_COLOR, 10)
-        draw_text("3. יציאה", TEXT_COLOR, 50)
-        draw_text(f"שיא נוכחי: {get_high_score()}", TEXT_COLOR, 90, score_font)
+        screen.fill(MODERN_BG)
+
+        card = pygame.Rect(0, 0, WINDOW_WIDTH - MARGIN, WINDOW_HEIGHT - MARGIN)
+        card.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+        pygame.draw.rect(screen, MODERN_PANEL, card, border_radius=18)
+        pygame.draw.rect(screen, MODERN_BORDER, card, width=2, border_radius=18)
+
+        draw_text("Snake for Windows", MODERN_TEXT, -140, font_style)
+        draw_text(f"נוקיה 225 - מהדורה רטרו (v{VERSION})", MODERN_TEXT_DIM, -108, score_font)
+        draw_text("1. התחל משחק", MODERN_TEXT, -40)
+        speed_label = "קל" if speed == 7 else "רגיל" if speed == 10 else "קשה"
+        draw_text(f"2. מהירות (כרגע: {speed_label})", MODERN_TEXT, 0)
+        draw_text("3. יציאה", MODERN_TEXT, 40)
+        draw_text(f"שיא נוכחי: {get_high_score()}", MODERN_ACCENT, 84, score_font)
         if update_info:
-            draw_text(f"4. לחצו לעדכון לגרסה {update_info.get('tag_name', '')}!", (0, 90, 0), 130, small_font)
+            draw_text(f"4. לחצו לעדכון לגרסה {update_info.get('tag_name', '')}!", MODERN_SUCCESS, 128, small_font)
         if update_message:
-            draw_text(update_message, APPLE_COLOR, 160, small_font)
-        draw_bezel()
+            draw_text(update_message, MODERN_DANGER, 160, small_font)
+
         pygame.display.update()
 
         for event in pygame.event.get():
