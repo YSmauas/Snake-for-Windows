@@ -10,7 +10,7 @@ import subprocess
 pygame.init()
 
 # --- מספר הגרסה הנוכחי (חייב להתאים לתגית ה-Release בגיטהאב, למשל v1.0.0) ---
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 GITHUB_REPO = "YSmauas/Snake-for-Windows"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -294,7 +294,25 @@ def draw_board_frame():
     )
 
 
-def draw_top_bar(high_score, score):
+MAX_SPEED_LEVELS = 8  # תואם ל-"base_speed + 8" - תקרת המהירות המקסימלית במשחק
+
+
+def draw_speed_meter(center_x, center_y, level, max_level=MAX_SPEED_LEVELS):
+    """מד מהירות קטן בסגנון פסי אקולייזר - כל פס גבוה יותר מקודמו, מלא בהתאם לרמת המהירות הנוכחית."""
+    bar_w, gap = 4, 3
+    min_h, max_h = 6, 22
+    total_w = max_level * bar_w + (max_level - 1) * gap
+    start_x = center_x - total_w // 2
+
+    for i in range(max_level):
+        h = min_h + (max_h - min_h) * (i + 1) / max_level
+        bx = start_x + i * (bar_w + gap)
+        by = center_y - h / 2
+        color = MODERN_ACCENT if i < level else MODERN_BORDER
+        pygame.draw.rect(screen, color, (bx, by, bar_w, h), border_radius=2)
+
+
+def draw_top_bar(high_score, score, speed=None, base_speed=None):
     """שורת הסטטוס - עכשיו מחוץ ללוח המשחק לגמרי, לא מכסה יותר אריחים של המשחק."""
     pygame.draw.rect(screen, MODERN_PANEL, (0, 0, WINDOW_WIDTH, TOP_BAR_HEIGHT))
     pygame.draw.line(screen, MODERN_BORDER, (0, TOP_BAR_HEIGHT), (WINDOW_WIDTH, TOP_BAR_HEIGHT), 2)
@@ -304,6 +322,10 @@ def draw_top_bar(high_score, score):
 
     pause_hint = small_font.render(rtl("P להשהיה"), True, MODERN_TEXT_DIM)
     screen.blit(pause_hint, [WINDOW_WIDTH - pause_hint.get_width() - MARGIN, (TOP_BAR_HEIGHT - pause_hint.get_height()) // 2])
+
+    if speed is not None and base_speed is not None:
+        level = max(0, min(MAX_SPEED_LEVELS, speed - base_speed))
+        draw_speed_meter(WINDOW_WIDTH // 2, TOP_BAR_HEIGHT // 2, level)
 
 
 def draw_chrome_margins():
@@ -399,7 +421,7 @@ def _dim_board():
     board.blit(overlay, (0, 0))
 
 
-def pause_screen(high_score, score):
+def pause_screen(high_score, score, speed, base_speed):
     """
     מסך השהייה: הכל *מחוץ* ללוח (שוליים, שורת הסטטוס) בסגנון מודרני כהה.
     לוח המשחק עצמו קופא במקום (תמונת "צילום" של הרגע שבו נלחץ P) ומעומעם -
@@ -414,7 +436,7 @@ def pause_screen(high_score, score):
         draw_chrome_margins()
         board.blit(board_snapshot, (0, 0))
         _dim_board()
-        draw_top_bar(high_score, score)
+        draw_top_bar(high_score, score, speed, base_speed)
         draw_board_frame()
         draw_board_text("השהייה", MODERN_TEXT, -20)
         draw_board_text("לחץ P כדי להמשיך", MODERN_TEXT_DIM, 20, score_font)
@@ -464,11 +486,23 @@ def gameLoop(base_speed):
         SPECIAL_DURATION = 5000
         SPECIAL_SPAWN_CHANCE = 15  # אחוזים
 
+        # מהירות עולה בפועל רק שנייה אחרי האכילה שגרמה לה - כדי שצליל
+        # ה"עלייה" לא יתנגש עם צליל הנגיסה שכבר מתנגן באותו רגע.
+        pending_speed_time = None
+        pending_new_speed = None
+        LEVELUP_DELAY = 1000
+
         while not game_over:
             current_time = pygame.time.get_ticks()
 
             if special_food_active and (current_time - special_spawn_time > SPECIAL_DURATION):
                 special_food_active = False
+
+            if pending_speed_time is not None and current_time >= pending_speed_time:
+                speed = pending_new_speed
+                play_sound(LEVELUP_SOUND)
+                pending_speed_time = None
+                pending_new_speed = None
 
             while game_close:
                 if close_snapshot is None:
@@ -477,7 +511,7 @@ def gameLoop(base_speed):
                 draw_chrome_margins()
                 board.blit(close_snapshot, (0, 0))
                 _dim_board()
-                draw_top_bar(high_score, score)
+                draw_top_bar(high_score, score, speed, base_speed)
                 draw_board_frame()
 
                 if score > high_score:
@@ -503,6 +537,12 @@ def gameLoop(base_speed):
                             game_close = False
                             restart = True
 
+            if game_over:
+                # יוצאים מיד - בלי זה, פריים "רפאים" אחד עדיין מריץ את קוד
+                # התנועה/ההתנגשות על snake_list הישן (מלפני האיפוס), ומזהה
+                # שוב "התנגשות" עם הגוף הישן -> משמיע את צליל ה-gameover פעם נוספת.
+                continue
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     game_over = True
@@ -520,7 +560,7 @@ def gameLoop(base_speed):
                         y1_change = BLOCK_SIZE
                         x1_change = 0
                     elif event.key == pygame.K_p:
-                        paused_ms = pause_screen(high_score, score)
+                        paused_ms = pause_screen(high_score, score, speed, base_speed)
                         # שומר שהתפוח המוזהב לא "ימות" בשקט בזמן שהמשחק מושהה
                         if special_food_active:
                             special_spawn_time += paused_ms
@@ -564,7 +604,7 @@ def gameLoop(base_speed):
             )
             draw_snake(BLOCK_SIZE, snake_list, direction=move_dir)
 
-            draw_top_bar(high_score, score)
+            draw_top_bar(high_score, score, speed, base_speed)
             draw_board_frame()
             pygame.display.update()
 
@@ -582,10 +622,10 @@ def gameLoop(base_speed):
                     special_spawn_time = current_time
 
                 if length_of_snake % 5 == 0:
-                    old_speed = speed
-                    speed = min(speed + 1, base_speed + 8)
-                    if speed != old_speed:
-                        play_sound(LEVELUP_SOUND)
+                    candidate_speed = min(speed + 1, base_speed + 8)
+                    if candidate_speed != speed:
+                        pending_new_speed = candidate_speed
+                        pending_speed_time = current_time + LEVELUP_DELAY
 
             # אכילת תפוח מוזהב מיוחד - ככל שתופסים מהר יותר, יותר נקודות
             if special_food_active and x1 == special_food_x and y1 == special_food_y:
