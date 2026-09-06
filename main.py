@@ -1,8 +1,11 @@
 import pygame
+import pygame_gui
 import random
 import os
 import sys
 import json
+import time
+import webbrowser
 import urllib.request
 import urllib.error
 import subprocess
@@ -10,7 +13,7 @@ import subprocess
 pygame.init()
 
 # --- מספר הגרסה הנוכחי (חייב להתאים לתגית ה-Release בגיטהאב, למשל v1.0.0) ---
-VERSION = "1.0.2"
+VERSION = "1.1.0"
 GITHUB_REPO = "YSmauas/Snake-for-Windows"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -37,6 +40,49 @@ MODERN_TEXT_DIM = (152, 157, 173)
 MODERN_ACCENT = (255, 199, 79)
 MODERN_SUCCESS = (110, 220, 140)
 MODERN_DANGER = (255, 99, 99)
+
+# --- ערכות נושא (themes) עבור pygame_gui, למעטפת החדשה (בית/שיאים/פרטיות/עדכון/אודות) ---
+# הערה: מצביעים על קובץ הגופן *ישירות* (regular_path) ולא לפי שם - מאותה סיבה
+# בדיוק שתיקנו קודם ל-pygame הרגיל: חיפוש גופן לפי שם לא אמין בתוך exe מקומפל.
+_UI_FONT_PATH = r"C:\Windows\Fonts\arial.ttf"
+
+DARK_UI_THEME = {
+    "defaults": {
+        "colours": {
+            "normal_bg": "#28303A",
+            "hovered_bg": "#34404D",
+            "disabled_bg": "#242830",
+            "selected_bg": "#3A4550",
+            "dark_bg": "#1C1E26",
+            "normal_text": "#EBECF0",
+            "hovered_text": "#FFFFFF",
+            "disabled_text": "#767B8C",
+            "selected_text": "#FFFFFF",
+            "normal_border": "#3F4352",
+            "disabled_border": "#3F4352",
+        },
+        "font": {"name": "arial", "size": "16", "bold": "0", "regular_path": _UI_FONT_PATH},
+    }
+}
+
+LIGHT_UI_THEME = {
+    "defaults": {
+        "colours": {
+            "normal_bg": "#F0F0F5",
+            "hovered_bg": "#E2E2EC",
+            "disabled_bg": "#F5F5F8",
+            "selected_bg": "#D5D8E8",
+            "dark_bg": "#FFFFFF",
+            "normal_text": "#1E1E23",
+            "hovered_text": "#000000",
+            "disabled_text": "#9A9AA5",
+            "selected_text": "#000000",
+            "normal_border": "#C7C7D1",
+            "disabled_border": "#C7C7D1",
+        },
+        "font": {"name": "arial", "size": "16", "bold": "0", "regular_path": _UI_FONT_PATH},
+    }
+}
 
 # --- לוח המשחק עצמו - בדיוק אותו גודל כמו קודם, שום דבר בהיגיון המשחק לא משתנה ---
 BOARD_WIDTH, BOARD_HEIGHT = 600, 400
@@ -144,22 +190,47 @@ score_font = _load_hebrew_font(20, bold=True)
 small_font = _load_hebrew_font(16, bold=True)
 
 
+def get_top_scores():
+    """
+    מחזיר את 5 השיאים הגבוהים ביותר, ממוינים מהגבוה לנמוך.
+    תומך גם בקובץ ישן בפורמט הקודם ({"high_score": N}) וממיר אותו אוטומטית.
+    """
+    if not os.path.exists(SCORE_FILE):
+        return []
+    try:
+        with open(SCORE_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    if "top_scores" in data:
+        scores = data.get("top_scores", [])
+    elif "high_score" in data:
+        # פורמט ישן - שיא בודד. ממירים לרשימה כדי שההיסטוריה לא תלך לאיבוד.
+        old = data.get("high_score", 0)
+        scores = [old] if old > 0 else []
+    else:
+        scores = []
+
+    return sorted(scores, reverse=True)[:5]
+
+
 def get_high_score():
-    if os.path.exists(SCORE_FILE):
-        try:
-            with open(SCORE_FILE, "r", encoding="utf-8") as file:
-                return json.load(file).get("high_score", 0)
-        except (json.JSONDecodeError, OSError):
-            return 0
-    return 0
+    scores = get_top_scores()
+    return scores[0] if scores else 0
 
 
-def save_high_score(score):
+def save_score(score):
+    """מוסיף ניקוד לרשימת 5 השיאים המובילים (אם הוא אכן נכנס לחמישייה) ושומר לדיסק."""
+    scores = get_top_scores()
+    scores.append(score)
+    scores = sorted(scores, reverse=True)[:5]
     try:
         with open(SCORE_FILE, "w", encoding="utf-8") as file:
-            json.dump({"high_score": score}, file)
+            json.dump({"top_scores": scores}, file)
     except OSError:
         pass  # אין הרשאת כתיבה - לא קריטי, פשוט לא נשמור הפעם
+    return scores
 
 
 def _parse_version(v):
@@ -421,6 +492,35 @@ def _dim_board():
     board.blit(overlay, (0, 0))
 
 
+def draw_icon_button(rect, icon):
+    """
+    כפתור עגלגל עם אייקון וקטורי בלבד - בלי טקסט בכלל (ולכן בלי שום תלות
+    בגופן/RTL). מצייר על screen (לא board), כי הכפתורים האלה שייכים
+    למסכי ה"מעטפת" (השהייה/נפסלת), לא ללוח המשחק עצמו.
+    """
+    pygame.draw.rect(screen, MODERN_PANEL, rect, border_radius=12)
+    pygame.draw.rect(screen, MODERN_BORDER, rect, width=2, border_radius=12)
+    cx, cy = rect.center
+    color = MODERN_TEXT
+
+    if icon == "play":
+        s = 9
+        pygame.draw.polygon(screen, color, [(cx - s // 2, cy - s), (cx - s // 2, cy + s), (cx + s, cy)])
+    elif icon == "restart":
+        pygame.draw.arc(screen, color, (cx - 12, cy - 12, 24, 24), 0.6, 5.4, 3)
+        pygame.draw.polygon(screen, color, [(cx + 11, cy - 7), (cx + 17, cy - 3), (cx + 9, cy + 2)])
+    elif icon == "home":
+        pygame.draw.polygon(screen, color, [(cx - 13, cy + 2), (cx, cy - 12), (cx + 13, cy + 2)])
+        pygame.draw.rect(screen, color, (cx - 8, cy + 2, 16, 12))
+
+
+def _clicked(rect, events):
+    for event in events:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and rect.collidepoint(event.pos):
+            return True
+    return False
+
+
 def pause_screen(high_score, score, speed, base_speed):
     """
     מסך השהייה: הכל *מחוץ* ללוח (שוליים, שורת הסטטוס) בסגנון מודרני כהה.
@@ -431,6 +531,8 @@ def pause_screen(high_score, score, speed, base_speed):
     paused = True
     pause_start = pygame.time.get_ticks()
     board_snapshot = board.copy()
+    resume_btn = pygame.Rect(0, 0, 56, 56)
+    resume_btn.center = (WINDOW_WIDTH // 2, BOARD_Y + BOARD_HEIGHT // 2 + 60)
 
     while paused:
         draw_chrome_margins()
@@ -440,14 +542,18 @@ def pause_screen(high_score, score, speed, base_speed):
         draw_board_frame()
         draw_board_text("השהייה", MODERN_TEXT, -20)
         draw_board_text("לחץ P כדי להמשיך", MODERN_TEXT_DIM, 20, score_font)
+        draw_icon_button(resume_btn, "play")
         pygame.display.update()
 
-        for event in pygame.event.get():
+        events = pygame.event.get()
+        for event in events:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
                 paused = False
+        if _clicked(resume_btn, events):
+            paused = False
         clock.tick(15)
 
     return pygame.time.get_ticks() - pause_start  # כמה זמן היינו בהשהייה, במילישניות
@@ -464,6 +570,7 @@ def gameLoop(base_speed):
         game_over = False
         game_close = False
         close_snapshot = None
+        score_recorded = False
 
         x1 = BOARD_WIDTH / 2
         y1 = BOARD_HEIGHT / 2
@@ -507,6 +614,11 @@ def gameLoop(base_speed):
             while game_close:
                 if close_snapshot is None:
                     close_snapshot = board.copy()
+                    restart_btn = pygame.Rect(0, 0, 56, 56)
+                    home_btn = pygame.Rect(0, 0, 56, 56)
+                    btn_y = BOARD_Y + BOARD_HEIGHT // 2 + 90
+                    restart_btn.center = (WINDOW_WIDTH // 2 - 40, btn_y)
+                    home_btn.center = (WINDOW_WIDTH // 2 + 40, btn_y)
 
                 draw_chrome_margins()
                 board.blit(close_snapshot, (0, 0))
@@ -514,17 +626,23 @@ def gameLoop(base_speed):
                 draw_top_bar(high_score, score, speed, base_speed)
                 draw_board_frame()
 
+                if not score_recorded:
+                    score_recorded = True
+                    save_score(score)
+
                 if score > high_score:
-                    save_high_score(score)
                     high_score = score
                     draw_board_text("!שיא חדש!", MODERN_ACCENT, -60)
 
                 draw_board_text("נפסלת!", MODERN_DANGER, -30)
                 draw_board_text("לחץ C לשחק שוב, Q לתפריט", MODERN_TEXT, 10)
                 draw_board_text(f"הניקוד שלך: {score}", MODERN_TEXT, 50, score_font)
+                draw_icon_button(restart_btn, "restart")
+                draw_icon_button(home_btn, "home")
                 pygame.display.update()
 
-                for event in pygame.event.get():
+                events = pygame.event.get()
+                for event in events:
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         sys.exit()
@@ -536,6 +654,13 @@ def gameLoop(base_speed):
                             game_over = True
                             game_close = False
                             restart = True
+                if _clicked(restart_btn, events):
+                    game_over = True
+                    game_close = False
+                    restart = True
+                elif _clicked(home_btn, events):
+                    game_over = True
+                    game_close = False
 
             if game_over:
                 # יוצאים מיד - בלי זה, פריים "רפאים" אחד עדיין מריץ את קוד
@@ -639,56 +764,250 @@ def gameLoop(base_speed):
             clock.tick(speed)
 
 
+def _speed_name(speed):
+    return "קל" if speed == 7 else "רגיל" if speed == 10 else "קשה"
+
+
+def _make_ui_manager(dark_mode):
+    theme = DARK_UI_THEME if dark_mode else LIGHT_UI_THEME
+    return pygame_gui.UIManager((WINDOW_WIDTH, WINDOW_HEIGHT), theme)
+
+
 def main_menu():
-    speed = 10
-    menu = True
-    update_info = check_for_update()
-    update_message = ""
+    """
+    המעטפת החדשה: שורה עליונה עם 3 אייקונים (מידע / תצוגה / תפריט צד),
+    מגירת צד עם 4 מסכים (בית, שיאים, פרטיות, עדכון אוטומטי), ומסך אודות
+    נפרד מהאייקון ℹ. בנוי עם pygame_gui - לא נבדק בפועל (אין רשת בסביבת
+    הפיתוח שיצרה את הקוד הזה), אז בדקו בזהירות לפני מיזוג ה-branch.
 
-    while menu:
-        screen.fill(MODERN_BG)
+    gameLoop() עצמו (המשחק בפועל) לא השתנה בכלל.
+    """
+    state = {
+        "dark_mode": True,
+        "screen": "home",
+        "drawer_open": False,
+        "speed": 10,
+        "last_check_time": None,
+        "update_info": None,
+        "update_message": "",
+    }
 
-        card = pygame.Rect(0, 0, WINDOW_WIDTH - MARGIN, WINDOW_HEIGHT - MARGIN)
-        card.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-        pygame.draw.rect(screen, MODERN_PANEL, card, border_radius=18)
-        pygame.draw.rect(screen, MODERN_BORDER, card, width=2, border_radius=18)
+    manager = _make_ui_manager(state["dark_mode"])
+    elements = {}
 
-        draw_text("Snake for Windows", MODERN_TEXT, -140, font_style)
-        draw_text(f"נוקיה 225 - מהדורה רטרו (v{VERSION})", MODERN_TEXT_DIM, -108, score_font)
-        draw_text("1. התחל משחק", MODERN_TEXT, -40)
-        speed_label = "קל" if speed == 7 else "רגיל" if speed == 10 else "קשה"
-        draw_text(f"2. מהירות (כרגע: {speed_label})", MODERN_TEXT, 0)
-        draw_text("3. יציאה", MODERN_TEXT, 40)
-        draw_text(f"שיא נוכחי: {get_high_score()}", MODERN_ACCENT, 84, score_font)
-        if update_info:
-            draw_text(f"4. לחצו לעדכון לגרסה {update_info.get('tag_name', '')}!", MODERN_SUCCESS, 128, small_font)
-        if update_message:
-            draw_text(update_message, MODERN_DANGER, 160, small_font)
+    def clear(group):
+        for el in elements.pop(group, []):
+            el.kill()
 
-        pygame.display.update()
+    def build_topbar():
+        clear("topbar")
+        info_btn = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(MARGIN, 10, 40, 36), text="i", manager=manager)
+        theme_btn = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(WINDOW_WIDTH // 2 - 20, 10, 40, 36),
+            text=("Dark" if state["dark_mode"] else "Light"), manager=manager)
+        menu_btn = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(WINDOW_WIDTH - MARGIN - 40, 10, 40, 36), text="=", manager=manager)
+        elements["topbar"] = [info_btn, theme_btn, menu_btn]
+        elements["info_btn"] = info_btn
+        elements["theme_btn"] = theme_btn
+        elements["menu_btn"] = menu_btn
+
+    def build_drawer():
+        clear("drawer")
+        panel_rect = pygame.Rect(WINDOW_WIDTH - 210, TOP_BAR_HEIGHT, 210, WINDOW_HEIGHT - TOP_BAR_HEIGHT)
+        panel = pygame_gui.elements.UIPanel(relative_rect=panel_rect, starting_height=2, manager=manager)
+        items = [("home", "בית"), ("scores", "שיאים"), ("privacy", "פרטיות"), ("update", "עדכון אוטומטי")]
+        buttons = {}
+        for i, (key, label) in enumerate(items):
+            buttons[key] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(10, 10 + i * 52, 190, 42),
+                text=rtl(label), manager=manager, container=panel)
+        panel.hide()
+        elements["drawer_panel"] = panel
+        elements["drawer_buttons"] = buttons
+        elements["drawer"] = [panel]
+
+    def build_content():
+        clear("content")
+        content_rect = pygame.Rect(
+            MARGIN, TOP_BAR_HEIGHT + MARGIN,
+            WINDOW_WIDTH - 2 * MARGIN, WINDOW_HEIGHT - TOP_BAR_HEIGHT - 2 * MARGIN,
+        )
+        panel = pygame_gui.elements.UIPanel(relative_rect=content_rect, starting_height=1, manager=manager)
+        widgets = [panel]
+        screen_name = state["screen"]
+        w = content_rect.width
+
+        if screen_name == "home":
+            pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(0, 10, w, 30), text="Snake for Windows",
+                manager=manager, container=panel)
+            elements["start_btn"] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(20, 60, w - 40, 46),
+                text=rtl("התחל משחק"), manager=manager, container=panel)
+            elements["left_arrow"] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(20, 122, 44, 44), text="<", manager=manager, container=panel)
+            elements["speed_label"] = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(74, 122, w - 44 * 2 - 40, 44),
+                text=rtl(_speed_name(state["speed"])), manager=manager, container=panel)
+            elements["right_arrow"] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(w - 20 - 44, 122, 44, 44), text=">", manager=manager, container=panel)
+            elements["exit_btn"] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(20, 184, w - 40, 46),
+                text=rtl("יציאה"), manager=manager, container=panel)
+            pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(0, 246, w, 30),
+                text=rtl(f"שיא גבוה ביותר: {get_high_score()}"), manager=manager, container=panel)
+
+        elif screen_name == "scores":
+            pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(0, 10, w, 30), text=rtl("5 השיאים המובילים"),
+                manager=manager, container=panel)
+            scores = get_top_scores()
+            if not scores:
+                pygame_gui.elements.UILabel(
+                    relative_rect=pygame.Rect(0, 56, w, 30), text=rtl("אין עדיין שיאים"),
+                    manager=manager, container=panel)
+            for i, s in enumerate(scores):
+                pygame_gui.elements.UILabel(
+                    relative_rect=pygame.Rect(20, 56 + i * 38, w - 40, 32),
+                    text=rtl(f"{i + 1}.  {s}"), manager=manager, container=panel)
+
+        elif screen_name == "privacy":
+            pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(0, 10, w, 30), text=rtl("פרטיות"), manager=manager, container=panel)
+            privacy_text = (
+                "המשחק פועל לחלוטין אופליין. אף מידע על המשחק שלך, "
+                "השיאים שלך, או כל תוכן אחר, אינו נשלח לאינטרנט. "
+                "התקשורת היחידה עם הרשת היא בדיקת קיום גרסה חדשה מול "
+                "עמוד ה-Releases של הפרויקט בגיטהאב - בדיקה זו רק קוראת "
+                "מידע ציבורי, ואינה שולחת שום פרט אישי."
+            )
+            pygame_gui.elements.UITextBox(
+                html_text=rtl(privacy_text), relative_rect=pygame.Rect(0, 50, w, content_rect.height - 60),
+                manager=manager, container=panel)
+
+        elif screen_name == "update":
+            last_check = state["last_check_time"] or "טרם נבדק"
+            pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(0, 10, w, 30), text=rtl(f"נבדק לאחרונה: {last_check}"),
+                manager=manager, container=panel)
+            status = f"עדכון זמין: {state['update_info'].get('tag_name', '')}" if state["update_info"] else "אין עדכון חדש"
+            pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(0, 50, w, 30), text=rtl(status), manager=manager, container=panel)
+            elements["check_btn"] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(20, 100, w - 40, 46), text=rtl("בדוק עכשיו"),
+                manager=manager, container=panel)
+            if state["update_info"]:
+                elements["apply_update_btn"] = pygame_gui.elements.UIButton(
+                    relative_rect=pygame.Rect(20, 160, w - 40, 46), text=rtl("התקן עדכון"),
+                    manager=manager, container=panel)
+            if state["update_message"]:
+                pygame_gui.elements.UILabel(
+                    relative_rect=pygame.Rect(0, 220, w, 30), text=rtl(state["update_message"]),
+                    manager=manager, container=panel)
+
+        elif screen_name == "about":
+            about_html = (
+                f"Snake for Windows v{VERSION}<br>"
+                "מאת: YSmauas<br><br>"
+                "פרויקט קוד פתוח - שחזור נוסטלגי למשחק הסנייק מהנוקיה 225."
+            )
+            pygame_gui.elements.UITextBox(
+                html_text=rtl(about_html), relative_rect=pygame.Rect(0, 10, w, 140),
+                manager=manager, container=panel)
+            elements["github_link_btn"] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(20, 160, w - 40, 46),
+                text=rtl("פתח את הפרויקט בגיטהאב"), manager=manager, container=panel)
+
+        elements["content"] = widgets
+
+    def switch_screen(name):
+        state["screen"] = name
+        state["drawer_open"] = False
+        elements["drawer_panel"].hide()
+        build_content()
+
+    def toggle_theme():
+        nonlocal manager
+        state["dark_mode"] = not state["dark_mode"]
+        manager = _make_ui_manager(state["dark_mode"])
+        build_topbar()
+        build_drawer()
+        build_content()
+
+    def do_update_check():
+        state["update_info"] = check_for_update()
+        state["last_check_time"] = time.strftime("%H:%M:%S")
+        state["update_message"] = ""
+        if state["screen"] == "update":
+            build_content()
+
+    build_topbar()
+    build_drawer()
+    do_update_check()  # בדיקת עדכונים אוטומטית, פעם אחת בכניסה לתפריט
+    build_content()
+
+    ui_clock = pygame.time.Clock()
+    while True:
+        time_delta = ui_clock.tick(30) / 1000.0
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1:
-                    gameLoop(speed)
-                elif event.key == pygame.K_2:
-                    if speed == 7:
-                        speed = 10
-                    elif speed == 10:
-                        speed = 15
+
+            manager.process_events(event)
+
+            if event.type == pygame_gui.UI_BUTTON_PRESSED:
+                el = event.ui_element
+                drawer_buttons = elements.get("drawer_buttons", {})
+
+                if el == elements.get("menu_btn"):
+                    state["drawer_open"] = not state["drawer_open"]
+                    if state["drawer_open"]:
+                        elements["drawer_panel"].show()
                     else:
-                        speed = 7
-                elif event.key == pygame.K_3:
+                        elements["drawer_panel"].hide()
+                elif el == elements.get("theme_btn"):
+                    toggle_theme()
+                elif el == elements.get("info_btn"):
+                    switch_screen("about")
+                elif el == drawer_buttons.get("home"):
+                    switch_screen("home")
+                elif el == drawer_buttons.get("scores"):
+                    switch_screen("scores")
+                elif el == drawer_buttons.get("privacy"):
+                    switch_screen("privacy")
+                elif el == drawer_buttons.get("update"):
+                    switch_screen("update")
+                elif el == elements.get("start_btn"):
+                    gameLoop(state["speed"])
+                    build_content()  # לרענן את "שיא גבוה ביותר" אחרי המשחק
+                elif el == elements.get("exit_btn"):
                     pygame.quit()
                     sys.exit()
-                elif event.key == pygame.K_4 and update_info:
-                    ok, msg = apply_update(update_info)
+                elif el == elements.get("left_arrow") or el == elements.get("right_arrow"):
+                    speeds = [7, 10, 15]
+                    idx = speeds.index(state["speed"])
+                    idx = (idx - 1) % len(speeds) if el == elements.get("left_arrow") else (idx + 1) % len(speeds)
+                    state["speed"] = speeds[idx]
+                    elements["speed_label"].set_text(rtl(_speed_name(state["speed"])))
+                elif el == elements.get("check_btn"):
+                    do_update_check()
+                elif el == elements.get("apply_update_btn") and state["update_info"]:
+                    ok, msg = apply_update(state["update_info"])
                     if not ok:
-                        update_message = msg
-                        update_info = None
+                        state["update_message"] = msg
+                        build_content()
+                elif el == elements.get("github_link_btn"):
+                    webbrowser.open("https://github.com/YSmauas/Snake-for-Windows")
+
+        manager.update(time_delta)
+        screen.fill(MODERN_BG if state["dark_mode"] else (240, 240, 245))
+        manager.draw_ui(screen)
+        pygame.display.update()
 
 
 if __name__ == "__main__":
