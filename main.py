@@ -13,7 +13,7 @@ import subprocess
 pygame.init()
 
 # --- מספר הגרסה הנוכחי (חייב להתאים לתגית ה-Release בגיטהאב, למשל v1.0.0) ---
-VERSION = "1.1.0"
+VERSION = "1.0.0"
 GITHUB_REPO = "YSmauas/Snake-for-Windows"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -40,48 +40,87 @@ MODERN_TEXT_DIM = (152, 157, 173)
 MODERN_ACCENT = (255, 199, 79)
 MODERN_SUCCESS = (110, 220, 140)
 MODERN_DANGER = (255, 99, 99)
+MODERN_ACCENT_HOVER = (255, 214, 122)
 
 # --- ערכות נושא (themes) עבור pygame_gui, למעטפת החדשה (בית/שיאים/פרטיות/עדכון/אודות) ---
-# הערה: מצביעים על קובץ הגופן *ישירות* (regular_path) ולא לפי שם - מאותה סיבה
-# בדיוק שתיקנו קודם ל-pygame הרגיל: חיפוש גופן לפי שם לא אמין בתוך exe מקומפל.
-_UI_FONT_PATH = r"C:\Windows\Fonts\arial.ttf"
+# הגופן נטען מקובץ *מצורף בתוך assets/fonts/* (לא גופן מערכת) - כך שהוא לא
+# תלוי כלל במה שמותקן על מחשב המשתמש. שם הגופן ("hebrew_ui_font") הוא שם
+# שאנחנו רושמים בעצמנו ב-_make_ui_manager, לא שם קובץ אמיתי.
+# (הנתיבים בפועל - UI_FONT_REGULAR_PATH / UI_FONT_BOLD_PATH - מוגדרים
+# בהמשך הקובץ, אחרי resource_path(), כי הם תלויים בה)
 
 DARK_UI_THEME = {
     "defaults": {
         "colours": {
-            "normal_bg": "#28303A",
-            "hovered_bg": "#34404D",
-            "disabled_bg": "#242830",
-            "selected_bg": "#3A4550",
-            "dark_bg": "#1C1E26",
-            "normal_text": "#EBECF0",
+            "normal_bg": "#262A35",
+            "hovered_bg": "#323844",
+            "disabled_bg": "#20232B",
+            "selected_bg": "#3A4150",
+            "dark_bg": "#191B22",
+            "normal_text": "#ECEDF2",
             "hovered_text": "#FFFFFF",
-            "disabled_text": "#767B8C",
+            "disabled_text": "#6E7180",
             "selected_text": "#FFFFFF",
-            "normal_border": "#3F4352",
-            "disabled_border": "#3F4352",
+            "normal_border": "#3A3F4D",
+            "disabled_border": "#3A3F4D",
         },
-        "font": {"name": "arial", "size": "16", "bold": "0", "regular_path": _UI_FONT_PATH},
-    }
+        "font": {"name": "hebrew_ui_font", "size": "16", "bold": "0"},
+        "misc": {
+            "shape": "rounded_rectangle",
+            "shape_corner_radius": "12",
+            "border_width": "1",
+            "shadow_width": "3",
+        },
+    },
+    "#start_button": {
+        "colours": {
+            "normal_bg": "#E3A93F",
+            "hovered_bg": "#F2BE5C",
+            "normal_text": "#1A1508",
+            "hovered_text": "#000000",
+            "normal_border": "#B8811F",
+        },
+        "font": {"name": "hebrew_ui_font", "size": "18", "bold": "1"},
+        "misc": {"shape_corner_radius": "14", "shadow_width": "4"},
+    },
+    "panel": {"misc": {"shape_corner_radius": "16", "shadow_width": "5"}},
 }
 
 LIGHT_UI_THEME = {
     "defaults": {
         "colours": {
-            "normal_bg": "#F0F0F5",
-            "hovered_bg": "#E2E2EC",
-            "disabled_bg": "#F5F5F8",
-            "selected_bg": "#D5D8E8",
+            "normal_bg": "#EFEFF4",
+            "hovered_bg": "#E1E1EC",
+            "disabled_bg": "#F6F6F9",
+            "selected_bg": "#D3D6EA",
             "dark_bg": "#FFFFFF",
-            "normal_text": "#1E1E23",
+            "normal_text": "#20212B",
             "hovered_text": "#000000",
             "disabled_text": "#9A9AA5",
             "selected_text": "#000000",
-            "normal_border": "#C7C7D1",
-            "disabled_border": "#C7C7D1",
+            "normal_border": "#CACAD4",
+            "disabled_border": "#CACAD4",
         },
-        "font": {"name": "arial", "size": "16", "bold": "0", "regular_path": _UI_FONT_PATH},
-    }
+        "font": {"name": "hebrew_ui_font", "size": "16", "bold": "0"},
+        "misc": {
+            "shape": "rounded_rectangle",
+            "shape_corner_radius": "12",
+            "border_width": "1",
+            "shadow_width": "3",
+        },
+    },
+    "#start_button": {
+        "colours": {
+            "normal_bg": "#E3A93F",
+            "hovered_bg": "#F2BE5C",
+            "normal_text": "#1A1508",
+            "hovered_text": "#000000",
+            "normal_border": "#B8811F",
+        },
+        "font": {"name": "hebrew_ui_font", "size": "18", "bold": "1"},
+        "misc": {"shape_corner_radius": "14", "shadow_width": "4"},
+    },
+    "panel": {"misc": {"shape_corner_radius": "16", "shadow_width": "5"}},
 }
 
 # --- לוח המשחק עצמו - בדיוק אותו גודל כמו קודם, שום דבר בהיגיון המשחק לא משתנה ---
@@ -123,6 +162,10 @@ def resource_path(relative_path):
     else:
         base_path = APP_DIR
     return os.path.join(base_path, relative_path)
+
+
+UI_FONT_REGULAR_PATH = resource_path(os.path.join("assets", "fonts", "Rubik-Regular.ttf"))
+UI_FONT_BOLD_PATH = resource_path(os.path.join("assets", "fonts", "Rubik-Bold.ttf"))
 
 
 try:
@@ -770,7 +813,20 @@ def _speed_name(speed):
 
 def _make_ui_manager(dark_mode):
     theme = DARK_UI_THEME if dark_mode else LIGHT_UI_THEME
-    return pygame_gui.UIManager((WINDOW_WIDTH, WINDOW_HEIGHT), theme)
+    manager = pygame_gui.UIManager((WINDOW_WIDTH, WINDOW_HEIGHT), theme)
+    # רושמים את קובצי הגופן (Rubik, מצורף ב-assets/fonts/) תחת השם
+    # "hebrew_ui_font" - זה מה שה-theme מצביע עליו. בלי הרישום הזה, pygame_gui
+    # לא מוצא גופן בשם הזה ונופל בשקט לגופן ברירת המחדל הפנימי שלו - שלא
+    # כולל תווי עברית בכלל (בדיוק הריבועים שראינו בצילום המסך).
+    try:
+        manager.add_font_paths("hebrew_ui_font", UI_FONT_REGULAR_PATH, bold_path=UI_FONT_BOLD_PATH)
+        manager.preload_fonts([
+            {"name": "hebrew_ui_font", "point_size": 16, "style": "regular"},
+            {"name": "hebrew_ui_font", "point_size": 18, "style": "bold"},
+        ])
+    except Exception:
+        pass  # אם משהו נכשל כאן, עדיף שהתפריט עדיין ייפתח (עם גופן חלופי) מאשר יקרוס
+    return manager
 
 
 def main_menu():
@@ -844,8 +900,9 @@ def main_menu():
                 relative_rect=pygame.Rect(0, 10, w, 30), text="Snake for Windows",
                 manager=manager, container=panel)
             elements["start_btn"] = pygame_gui.elements.UIButton(
-                relative_rect=pygame.Rect(20, 60, w - 40, 46),
-                text=rtl("התחל משחק"), manager=manager, container=panel)
+                relative_rect=pygame.Rect(20, 64, w - 40, 52),
+                text=rtl("התחל משחק"), manager=manager, container=panel,
+                object_id=pygame_gui.core.ObjectID(object_id="#start_button"))
             elements["left_arrow"] = pygame_gui.elements.UIButton(
                 relative_rect=pygame.Rect(20, 122, 44, 44), text="<", manager=manager, container=panel)
             elements["speed_label"] = pygame_gui.elements.UILabel(
