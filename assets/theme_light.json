@@ -1,0 +1,52 @@
+{
+  "defaults": {
+    "colours": {
+      "normal_bg": "#EFEFF4",
+      "hovered_bg": "#E1E1EC",
+      "disabled_bg": "#F6F6F9",
+      "selected_bg": "#D3D6EA",
+      "dark_bg": "#FFFFFF",
+      "normal_text": "#20212B",
+      "hovered_text": "#000000",
+      "disabled_text": "#9A9AA5",
+      "selected_text": "#000000",
+      "normal_border": "#CACAD4",
+      "disabled_border": "#CACAD4"
+    },
+    "font": {
+      "name": "hebrew_ui_font",
+      "size": "16",
+      "bold": "0"
+    },
+    "misc": {
+      "shape": "rounded_rectangle",
+      "shape_corner_radius": "12",
+      "border_width": "1",
+      "shadow_width": "3"
+    }
+  },
+  "#start_button": {
+    "colours": {
+      "normal_bg": "#E3A93F",
+      "hovered_bg": "#F2BE5C",
+      "normal_text": "#1A1508",
+      "hovered_text": "#000000",
+      "normal_border": "#B8811F"
+    },
+    "font": {
+      "name": "hebrew_ui_font",
+      "size": "18",
+      "bold": "1"
+    },
+    "misc": {
+      "shape_corner_radius": "14",
+      "shadow_width": "4"
+    }
+  },
+  "panel": {
+    "misc": {
+      "shape_corner_radius": "16",
+      "shadow_width": "5"
+    }
+  }
+}
