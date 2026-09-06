@@ -13,7 +13,7 @@ import subprocess
 pygame.init()
 
 # --- מספר הגרסה הנוכחי (חייב להתאים לתגית ה-Release בגיטהאב, למשל v1.0.0) ---
-VERSION = "1.1.0"
+VERSION = "1.0.0"
 GITHUB_REPO = "YSmauas/Snake-for-Windows"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -43,85 +43,12 @@ MODERN_DANGER = (255, 99, 99)
 MODERN_ACCENT_HOVER = (255, 214, 122)
 
 # --- ערכות נושא (themes) עבור pygame_gui, למעטפת החדשה (בית/שיאים/פרטיות/עדכון/אודות) ---
-# הגופן נטען מקובץ *מצורף בתוך assets/fonts/* (לא גופן מערכת) - כך שהוא לא
-# תלוי כלל במה שמותקן על מחשב המשתמש. שם הגופן ("hebrew_ui_font") הוא שם
-# שאנחנו רושמים בעצמנו ב-_make_ui_manager, לא שם קובץ אמיתי.
-# (הנתיבים בפועל - UI_FONT_REGULAR_PATH / UI_FONT_BOLD_PATH - מוגדרים
-# בהמשך הקובץ, אחרי resource_path(), כי הם תלויים בה)
-
-DARK_UI_THEME = {
-    "defaults": {
-        "colours": {
-            "normal_bg": "#262A35",
-            "hovered_bg": "#323844",
-            "disabled_bg": "#20232B",
-            "selected_bg": "#3A4150",
-            "dark_bg": "#191B22",
-            "normal_text": "#ECEDF2",
-            "hovered_text": "#FFFFFF",
-            "disabled_text": "#6E7180",
-            "selected_text": "#FFFFFF",
-            "normal_border": "#3A3F4D",
-            "disabled_border": "#3A3F4D",
-        },
-        "font": {"name": "hebrew_ui_font", "size": "16", "bold": "0"},
-        "misc": {
-            "shape": "rounded_rectangle",
-            "shape_corner_radius": "12",
-            "border_width": "1",
-            "shadow_width": "3",
-        },
-    },
-    "#start_button": {
-        "colours": {
-            "normal_bg": "#E3A93F",
-            "hovered_bg": "#F2BE5C",
-            "normal_text": "#1A1508",
-            "hovered_text": "#000000",
-            "normal_border": "#B8811F",
-        },
-        "font": {"name": "hebrew_ui_font", "size": "18", "bold": "1"},
-        "misc": {"shape_corner_radius": "14", "shadow_width": "4"},
-    },
-    "panel": {"misc": {"shape_corner_radius": "16", "shadow_width": "5"}},
-}
-
-LIGHT_UI_THEME = {
-    "defaults": {
-        "colours": {
-            "normal_bg": "#EFEFF4",
-            "hovered_bg": "#E1E1EC",
-            "disabled_bg": "#F6F6F9",
-            "selected_bg": "#D3D6EA",
-            "dark_bg": "#FFFFFF",
-            "normal_text": "#20212B",
-            "hovered_text": "#000000",
-            "disabled_text": "#9A9AA5",
-            "selected_text": "#000000",
-            "normal_border": "#CACAD4",
-            "disabled_border": "#CACAD4",
-        },
-        "font": {"name": "hebrew_ui_font", "size": "16", "bold": "0"},
-        "misc": {
-            "shape": "rounded_rectangle",
-            "shape_corner_radius": "12",
-            "border_width": "1",
-            "shadow_width": "3",
-        },
-    },
-    "#start_button": {
-        "colours": {
-            "normal_bg": "#E3A93F",
-            "hovered_bg": "#F2BE5C",
-            "normal_text": "#1A1508",
-            "hovered_text": "#000000",
-            "normal_border": "#B8811F",
-        },
-        "font": {"name": "hebrew_ui_font", "size": "18", "bold": "1"},
-        "misc": {"shape_corner_radius": "14", "shadow_width": "4"},
-    },
-    "panel": {"misc": {"shape_corner_radius": "16", "shadow_width": "5"}},
-}
+# ה-theme נטען מקובץ JSON *אמיתי* (assets/theme_dark.json / theme_light.json),
+# לא מ-dict של פייתון - כי יש חשד מבוסס ש-UIManager לא תומך באמינות בקבלת
+# dict ישירות, ונופל בשקט ל-theme הפנימי שלו כשזה נכשל (זה בדיוק מה שקרה:
+# גם הגופן וגם העיצוב לא השתנו בכלל - סימן ל-theme שלא נטען בפועל).
+# הנתיבים המלאים (UI_THEME_DARK_PATH וכו') מוגדרים בהמשך הקובץ, אחרי
+# resource_path(), כי הם תלויים בה.
 
 # --- לוח המשחק עצמו - בדיוק אותו גודל כמו קודם, שום דבר בהיגיון המשחק לא משתנה ---
 BOARD_WIDTH, BOARD_HEIGHT = 600, 400
@@ -166,6 +93,8 @@ def resource_path(relative_path):
 
 UI_FONT_REGULAR_PATH = resource_path(os.path.join("assets", "fonts", "Rubik-Regular.ttf"))
 UI_FONT_BOLD_PATH = resource_path(os.path.join("assets", "fonts", "Rubik-Bold.ttf"))
+UI_THEME_DARK_PATH = resource_path(os.path.join("assets", "theme_dark.json"))
+UI_THEME_LIGHT_PATH = resource_path(os.path.join("assets", "theme_light.json"))
 
 
 try:
@@ -811,9 +740,23 @@ def _speed_name(speed):
     return "קל" if speed == 7 else "רגיל" if speed == 10 else "קשה"
 
 
+def _log_debug(message):
+    """כותב שורת דיבוג לקובץ ליד ה-exe - כי זה --windowed, אין קונסולה לראות בה שגיאות."""
+    try:
+        with open(os.path.join(APP_DIR, "debug_log.txt"), "a", encoding="utf-8") as f:
+            f.write(message + "\n")
+    except Exception:
+        pass
+
+
 def _make_ui_manager(dark_mode):
-    theme = DARK_UI_THEME if dark_mode else LIGHT_UI_THEME
-    manager = pygame_gui.UIManager((WINDOW_WIDTH, WINDOW_HEIGHT), theme)
+    theme_path = UI_THEME_DARK_PATH if dark_mode else UI_THEME_LIGHT_PATH
+    _log_debug(f"[ui] theme_path={theme_path} exists={os.path.exists(theme_path)}")
+    _log_debug(f"[ui] font_regular={UI_FONT_REGULAR_PATH} exists={os.path.exists(UI_FONT_REGULAR_PATH)}")
+    _log_debug(f"[ui] font_bold={UI_FONT_BOLD_PATH} exists={os.path.exists(UI_FONT_BOLD_PATH)}")
+
+    manager = pygame_gui.UIManager((WINDOW_WIDTH, WINDOW_HEIGHT), theme_path)
+
     # רושמים את קובצי הגופן (Rubik, מצורף ב-assets/fonts/) תחת השם
     # "hebrew_ui_font" - זה מה שה-theme מצביע עליו. בלי הרישום הזה, pygame_gui
     # לא מוצא גופן בשם הזה ונופל בשקט לגופן ברירת המחדל הפנימי שלו - שלא
@@ -824,8 +767,9 @@ def _make_ui_manager(dark_mode):
             {"name": "hebrew_ui_font", "point_size": 16, "style": "regular"},
             {"name": "hebrew_ui_font", "point_size": 18, "style": "bold"},
         ])
-    except Exception:
-        pass  # אם משהו נכשל כאן, עדיף שהתפריט עדיין ייפתח (עם גופן חלופי) מאשר יקרוס
+        _log_debug("[ui] font registration + preload: OK")
+    except Exception as e:
+        _log_debug(f"[ui] font registration FAILED: {type(e).__name__}: {e}")
     return manager
 
 
