@@ -755,12 +755,12 @@ def _make_ui_manager(dark_mode):
     _log_debug(f"[ui] font_regular={UI_FONT_REGULAR_PATH} exists={os.path.exists(UI_FONT_REGULAR_PATH)}")
     _log_debug(f"[ui] font_bold={UI_FONT_BOLD_PATH} exists={os.path.exists(UI_FONT_BOLD_PATH)}")
 
-    manager = pygame_gui.UIManager((WINDOW_WIDTH, WINDOW_HEIGHT), theme_path)
+    # חשוב: יוצרים את ה-manager *בלי* theme קודם, ורק אחרי שרושמים את הגופן
+    # טוענים את ה-theme בפועל. אם ה-theme נטען כבר בבנייה (לפני שהגופן רשום),
+    # החיפוש של "hebrew_ui_font" נכשל בשקט באותו רגע ונשאר "תקוע" על ברירת
+    # המחדל - גם אם רושמים את הגופן מיד אחר כך. זה בדיוק מה שקרה קודם.
+    manager = pygame_gui.UIManager((WINDOW_WIDTH, WINDOW_HEIGHT))
 
-    # רושמים את קובצי הגופן (Rubik, מצורף ב-assets/fonts/) תחת השם
-    # "hebrew_ui_font" - זה מה שה-theme מצביע עליו. בלי הרישום הזה, pygame_gui
-    # לא מוצא גופן בשם הזה ונופל בשקט לגופן ברירת המחדל הפנימי שלו - שלא
-    # כולל תווי עברית בכלל (בדיוק הריבועים שראינו בצילום המסך).
     try:
         manager.add_font_paths("hebrew_ui_font", UI_FONT_REGULAR_PATH, bold_path=UI_FONT_BOLD_PATH)
         manager.preload_fonts([
@@ -770,6 +770,12 @@ def _make_ui_manager(dark_mode):
         _log_debug("[ui] font registration + preload: OK")
     except Exception as e:
         _log_debug(f"[ui] font registration FAILED: {type(e).__name__}: {e}")
+
+    try:
+        manager.get_theme().load_theme(theme_path)
+        _log_debug("[ui] theme load (after font registration): OK")
+    except Exception as e:
+        _log_debug(f"[ui] theme load FAILED: {type(e).__name__}: {e}")
     return manager
 
 
